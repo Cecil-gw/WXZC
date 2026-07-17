@@ -1,5 +1,6 @@
 import shop_tools
 import time as t
+import goods.base_drink
 
 
 coffee = ["美式咖啡","卡布奇诺", "拿铁", "摩卡", "焦糖玛奇朵","抹茶拿铁", "红茶拿铁"]
@@ -51,7 +52,7 @@ def main():
             else:
                 # 普通饮品只参与店铺折扣
                 single_price = shop_tools.sell_price[drink]
-                total_price = round(single_price * num * BaseDrink.shop_discount, 2)
+                total_price = round(single_price * num * goods.base_drink.shop_discount, 2)
 
             # 生成订单、扣库存、写入订单日志
             order = shop_tools.create_order(name, drink, num)
