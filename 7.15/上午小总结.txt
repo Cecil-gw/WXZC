@@ -1,0 +1,148 @@
+class Father:
+    # 1. 类变量（所有对象共享，可修改）
+    count = 0
+
+    # 2. 构造方法__init__：创建对象自动执行，定义实例属性
+    def __init__(self, name, id):
+        self.name = name        # 公有实例属性，外部可以直接访问
+        self.__id = id          # 私有实例属性，双下划线开头，类外不能直接调用
+
+    # 3. 私有实例方法：双下划线开头，仅类内部能调用
+    def __repair(self, input):
+        self.__id = input   # 内部可以操作私有属性self.__id
+
+    # 4. 普通实例方法：必须带self，操作实例属性、调用私有方法
+    def run(self, input):
+        self.name = input          # 修改已有实例属性
+        self.__repair(0)           # 类内调用私有方法
+        self.age = 40              # 动态新增实例属性
+
+    # 5. 类方法 @classmethod：参数cls代表当前类，只操作类变量
+    @classmethod
+    def add_count(cls):
+        cls.count += 1
+
+     # 6. 静态方法 @staticmethod
+    @staticmethod
+    def print_tips(msg):
+        # 静态方法里不能用 self、不能用 cls
+        # 只能使用传入的参数，独立工具逻辑
+        print(f"提示信息：{msg}")
+
+# ========== 测试演示 ==========
+# 创建2个实例
+f1 = Father("老张", 1001)
+f2 = Father("老李", 1002)
+
+# 1. 类变量：全类共享，类方法修改
+Father.add_count()
+Father.add_count()
+print("类变量count：", Father.count)  # 输出 2，两个对象共用同一个count
+
+# 2. 公有实例属性：外部直接读写
+print(f1.name)  # 老张
+f1.run("老张更新")
+print(f1.name)  # 老张更新
+print(f1.age)   # 实例方法里动态新增的属性 40
+
+# 3. 私有属性/私有方法：外部无法访问，运行报错
+# print(f1.__id)  # 报错
+# f1.__repair(5)  # 报错
+
+
+# 子类 Son 继承 Father
+class Son(Father):
+    # 子类构造，新增参数 age
+    def __init__(self, name, id, age):
+        # 调用父类构造，继承父属性 name、__id
+        super().__init__(name, id)
+        self.age = age  # 子类独有的实例属性
+
+    # 【方法重写】和父类方法同名 run，覆盖父类逻辑
+    def run(self, input):
+        # 可选：先执行一遍父类原来的逻辑
+        super().run(input)
+        # 子类扩展新逻辑
+        print(f"子类重写run：{self.name}，年龄{self.age}，处理数据：{input * 2}")
+
+
+# 测试
+s = Son("小明", 2001, 18)
+# 调用重写后的run，执行子类代码
+s.run(10)
+
+# 类变量继承，子类可直接使用
+Son.add_count()
+print(Son.count)
+
+!!===============
+核心要点
+继承语法 class 子类名(父类名):
+super().__init__(父类需要的参数)：必须写，否则拿不到父类属性
+重写条件：方法名、参数列表和父类完全一致
+super().方法名()：在重写的方法内部，调用父类原版逻辑
+子类自动拥有父类：类变量、实例属性、实例方法、类方法、静态方法
+私有属性 self.__id 子类无法直接访问（父类私有成员不对外继承）
+
+
+一. time 库 + datetime 库 总结（结合你代码）
+1、time 库（简写 t）
+核心用法：模拟推理等待
+t.sleep(n)
+程序暂停 n 秒，用来模仿模型推理耗时
+(1.1）time.time () 时间戳（浮点数秒）
+(1.2）time.localtime() / time.gmtime()把时间戳转成结构化时间（年、月、日、时、分、秒）print(t.localtime())
+(1.3）time.strftime () 格式化时间输出print(t.strftime("%Y-%m-%d %H:%M:%S", t.localtime()))
+
+
+2、datetime 库（简写 d）
+专门用来记录时间、计算耗时
+获取当前时间戳
+s = d.now() 任务开始时间
+e = d.now() 任务结束时间
+计算运行多久
+cost = (e - s).total_seconds()
+两个时间相减得到时间差，转成秒数（小数）
+3、两者分工区别
+time.sleep：只负责停住程序，模拟耗时
+datetime：只负责记时间、算用了多久
+4、搭配线程使用规则
+每个线程内部自己调用 d.now()，生成的起止时间是线程私有变量，不用锁
+算好耗时、结果打包字典后，存入全局列表 records 时，才需要加线程锁
+5、易错点
+拼写：datetime，不是 datatime
+d.now() 必须带括号，d.now 只是函数对象，拿不到时间
+只有两个 datetime 对象才能相减，不能数字直接减时间
+
+
+二、线程完整核心总结
+1. 四步标准并发写法
+定义任务函数（这里是 user_request）
+创建线程：thr = th.Thread(target=函数user_request, args=(参数1,参数2,参数3))
+启动并发：thr.start()，全部线程先一次性启动，不要启动一个等一个
+等待全部结束：所有线程存入列表，循环 thr.join()
+2. 串行 vs 并发区别
+串行：start () 后面立刻 join ()，做完一个才下一个，时间叠加
+并发：全部先 start ()，再统一 join ()，任务同步运行，总耗时由最慢任务决定
+3. 共享资源 + 锁（必考重点）
+全局列表 records 所有线程都要 append，属于共享资源，多线程同时修改会乱
+创建全局锁：lock = th.Lock()
+固定三段模板（必须成对）
+
+log_data = {
+        "user": user_name,
+        "模型名称": model.name,
+        "耗时(秒)": round(cost, 2),
+        "结果": result,
+        "开始": s_time,
+        "结束": e_time
+    }
+
+lock.acquire()   # 上锁，其他线程卡住
+records.append(数据-log_data)
+lock.release()   # 解锁放行
+
+区分：
+局部变量（每个线程自己的时间、结果）→ 不用锁
+全局公共列表 → 必须加锁
+

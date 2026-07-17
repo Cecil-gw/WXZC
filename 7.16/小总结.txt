@@ -1,0 +1,662 @@
+下面给你整理一份**适合团队开发和面试复习**的总结，涵盖 **GitHub 组织协作** 和 **Python 虚拟环境、第三方库管理**。
+
+---
+
+# 一、GitHub 组织（Organization）常用操作
+
+## 1. 克隆（拉取）项目
+
+第一次获取项目：
+
+```bash
+git clone https://github.com/组织名/仓库名.git
+```
+
+进入项目：
+
+```bash
+cd 仓库名
+```
+
+查看远程仓库：
+
+```bash
+git remote -v
+```
+
+---
+
+## 2. 创建自己的开发分支
+
+不要直接在 `main` 上开发。
+
+先切换到主分支：
+
+```bash
+git switch main
+```
+
+拉取最新代码：
+
+```bash
+git pull origin main
+```
+
+创建自己的分支：
+
+```bash
+git switch -c cecil
+```
+
+查看当前分支：
+
+```bash
+git branch
+```
+
+例如：
+
+```text
+* cecil
+  main
+```
+
+---
+
+## 3. 开发代码
+
+修改项目文件。
+
+查看状态：
+
+```bash
+git status
+```
+
+---
+
+## 4. 提交代码
+
+添加文件：
+
+```bash
+git add .
+```
+
+提交：
+
+```bash
+git commit -m "新增登录功能"
+```
+
+---
+
+## 5. 推送到远程
+
+第一次：
+
+```bash
+git push -u origin cecil
+```
+
+以后：
+
+```bash
+git push
+```
+
+---
+
+## 6. 创建 Pull Request（PR）
+
+GitHub 会提示：
+
+```
+Create a pull request for 'cecil'
+```
+
+流程：
+
+```
+cecil
+   │
+ push
+   │
+GitHub
+   │
+Pull Request
+   │
+Review
+   │
+Merge
+   │
+main
+```
+
+一般团队不会直接向 `main` 推送，而是通过 PR 合并。
+
+---
+
+## 7. 合并分支（本地）
+
+切换到目标分支：
+
+```bash
+git switch main
+```
+
+更新：
+
+```bash
+git pull origin main
+```
+
+合并：
+
+```bash
+git merge cecil
+```
+
+推送：
+
+```bash
+git push origin main
+```
+
+---
+
+## 8. 解决冲突
+
+Git 提示：
+
+```text
+CONFLICT (content)
+```
+
+打开冲突文件：
+
+```text
+<<<<<<< HEAD
+当前内容
+=======
+对方内容
+>>>>>>> cecil
+```
+
+保留最终需要的内容，删除冲突标记。
+
+然后：
+
+```bash
+git add .
+git commit -m "解决冲突"
+git push
+```
+
+放弃此次合并：
+
+```bash
+git merge --abort
+```
+
+---
+
+# GitHub 团队开发流程
+
+```
+git clone
+      │
+      ▼
+git switch -c 自己分支
+      │
+      ▼
+修改代码
+      │
+      ▼
+git add
+      │
+      ▼
+git commit
+      │
+      ▼
+git push
+      │
+      ▼
+Pull Request
+      │
+      ▼
+Review
+      │
+      ▼
+Merge
+```
+
+---
+
+# 二、Python 虚拟环境（Virtual Environment）
+
+## 为什么使用虚拟环境？
+
+例如：
+
+项目A：
+
+```
+Django 4.2
+```
+
+项目B：
+
+```
+Django 5.2
+```
+
+如果都安装到系统 Python：
+
+```
+Python
+│
+├── Django4
+└── Django5
+```
+
+会发生版本冲突。
+
+所以每个项目使用独立环境：
+
+```
+项目A
+└── .venv
+
+项目B
+└── .venv
+```
+
+互不影响。
+
+---
+
+## 创建虚拟环境
+
+进入项目：
+
+```bash
+cd project
+```
+
+创建：
+
+```bash
+python -m venv .venv
+```
+
+或者：
+
+```bash
+py -m venv .venv
+```
+
+`.venv` 是目录名称，可自定义。
+
+---
+
+## 激活虚拟环境
+
+### Windows PowerShell
+
+```powershell
+.\.venv\Scripts\Activate.ps1
+```
+
+如果目录叫：
+
+```
+venv
+```
+
+就是：
+
+```powershell
+.\venv\Scripts\Activate.ps1
+```
+
+规律：
+
+```
+.\虚拟环境目录\Scripts\Activate.ps1
+```
+
+成功后：
+
+```
+(.venv) PS>
+```
+
+---
+
+## 退出
+
+```bash
+deactivate
+```
+
+---
+
+## 查看 Python
+
+```bash
+where python
+```
+
+查看是否使用虚拟环境：
+
+```
+...\project\.venv\Scripts\python.exe
+```
+
+---
+
+# pip（Python 包管理器）
+
+安装：
+
+```bash
+pip install requests
+```
+
+指定版本：
+
+```bash
+pip install requests==2.32.0
+```
+
+升级：
+
+```bash
+pip install --upgrade requests
+```
+
+卸载：
+
+```bash
+pip uninstall requests
+```
+
+查看：
+
+```bash
+pip list
+```
+
+导出依赖：
+
+```bash
+pip freeze > requirements.txt
+```
+
+安装依赖：
+
+```bash
+pip install -r requirements.txt
+```
+
+---
+
+# PyPI（Python Package Index）
+
+PyPI 是 Python 官方第三方库仓库。
+
+官网：
+
+> [https://pypi.org](https://pypi.org)
+
+例如：
+
+```
+requests
+numpy
+pandas
+flask
+django
+opencv-python
+```
+
+都来自 PyPI。
+
+安装：
+
+```bash
+pip install numpy
+```
+
+实际上就是：
+
+```
+PyPI
+    │
+下载
+    │
+pip
+    │
+安装到虚拟环境
+```
+
+---
+
+# 国内镜像
+
+由于访问 PyPI 有时较慢，可以使用国内镜像。
+
+例如清华镜像：
+
+```bash
+pip install numpy -i https://pypi.tuna.tsinghua.edu.cn/simple
+```
+
+阿里云：
+
+```bash
+pip install numpy -i https://mirrors.aliyun.com/pypi/simple/
+```
+
+中科大：
+
+```bash
+pip install numpy -i https://pypi.mirrors.ustc.edu.cn/simple
+```
+
+---
+
+## 永久设置镜像（Windows）
+
+```bash
+pip config set global.index-url https://pypi.tuna.tsinghua.edu.cn/simple
+```
+
+查看配置：
+
+```bash
+pip config list
+```
+
+恢复官方：
+
+```bash
+pip config unset global.index-url
+```
+
+---
+
+# 三、import 导入模块
+
+## 1. 导入整个模块
+
+```python
+import math
+
+print(math.sqrt(16))
+```
+
+---
+
+## 2. 起别名
+
+```python
+import numpy as np
+
+a = np.array([1,2,3])
+```
+
+这是最常见的写法。
+
+常见别名：
+
+```
+numpy → np
+pandas → pd
+matplotlib.pyplot → plt
+```
+
+---
+
+## 3. 导入部分内容
+
+```python
+from math import sqrt
+
+print(sqrt(16))
+```
+
+无需写：
+
+```python
+math.sqrt()
+```
+
+---
+
+## 4. 导入多个
+
+```python
+from math import sqrt, pi
+```
+
+---
+
+## 5. 全部导入（不推荐）
+
+```python
+from math import *
+```
+
+容易发生命名冲突。
+
+---
+
+## 6. 导入自己写的模块
+
+目录：
+
+```
+project
+│
+main.py
+utils.py
+```
+
+utils.py：
+
+```python
+def add(a,b):
+    return a+b
+```
+
+main.py：
+
+```python
+import utils
+
+print(utils.add(1,2))
+```
+
+或者：
+
+```python
+from utils import add
+
+print(add(1,2))
+```
+
+---
+
+## 7. 导入包（Package）
+
+```
+project
+│
+main.py
+utils
+│
+├── __init__.py
+└── math.py
+```
+
+导入：
+
+```python
+from utils.math import add
+```
+
+---
+
+# import 总结
+
+| 写法                                | 用途         |
+| --------------------------------- | ---------- |
+| `import math`                     | 导入整个模块     |
+| `import numpy as np`              | 导入并起别名     |
+| `from math import sqrt`           | 导入指定对象     |
+| `from math import sqrt, pi`       | 导入多个对象     |
+| `from math import *`              | 导入全部（不推荐）  |
+| `from utils import add`           | 导入自定义模块函数  |
+| `from package.module import func` | 导入包中的模块或函数 |
+
+---
+
+## 四、完整的 Python 项目开发流程
+
+```text
+创建项目
+    │
+    ▼
+python -m venv .venv
+    │
+    ▼
+激活虚拟环境
+    │
+    ▼
+pip install 第三方库
+    │
+    ▼
+import 使用第三方库
+    │
+    ▼
+开发代码
+    │
+    ▼
+pip freeze > requirements.txt
+    │
+    ▼
+Git 提交
+    │
+    ▼
+push 到 GitHub
+    │
+    ▼
+Pull Request
+    │
+    ▼
+Merge 到 main
+```
+
+掌握这一套流程，基本就能覆盖日常 Python 项目开发和团队协作中的常见操作。
