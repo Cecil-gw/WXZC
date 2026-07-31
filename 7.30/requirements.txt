@@ -1,0 +1,33 @@
+# 保险精准营销系统 Insurance AI · 依赖清单
+# 版本来源：docs/04_技术框架方案.md §3 技术选型
+# Python 兼容：3.12 / 3.13（DECISION-002：pandas/numpy/pydantic/scikit-learn/xgboost/matplotlib 已放宽到兼容范围）
+
+# --- Web 框架 & 校验 ---
+Flask==3.0.3
+pydantic>=2.10,<3
+pydantic-settings==2.2.1
+
+# --- ORM & 数据库 ---
+# SQLAlchemy 2.0.30 在 Python 3.13 上有 __firstlineno__ 兼容 bug（2.0.31+ 修复）；放宽到 2.0.31+，同主版本内 API 兼容
+SQLAlchemy>=2.0.31,<2.1
+
+# --- 认证与密码 ---
+python-jose==3.3.0
+bcrypt==4.1.2
+
+# --- 数据处理 & Excel ---
+pandas>=2.2.3,<3
+numpy>=2.0,<3
+openpyxl==3.1.2
+
+# --- 机器学习 ---
+scikit-learn>=1.5,<2
+xgboost>=2.1,<4
+joblib==1.4.2
+
+# --- 可视化（后端 Agg，用于 base64 PNG） ---
+matplotlib>=3.9,<4
+seaborn==0.13.2
+
+# --- 大模型（OpenAI 兼容协议） ---
+openai==1.51.0

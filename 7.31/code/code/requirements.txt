@@ -1,0 +1,13 @@
+# ===== Web Framework =====
+flask==3.0.3
+
+# ===== ORM =====
+SQLAlchemy==2.0.30
+
+# ===== Validation / Settings =====
+pydantic==2.7.1
+pydantic-settings==2.2.1
+
+# ===== Auth =====
+python-jose[cryptography]==3.3.0
+bcrypt==4.1.2
