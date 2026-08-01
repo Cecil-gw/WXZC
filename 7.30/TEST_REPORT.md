@@ -244,3 +244,73 @@
 - /data/statistics / /data/quality / /data/visualization → P1-03
 - 38 万行 count + 分页性能基线（当前测 25 行）→ 需真实数据集
 - 索引优化（age_min/max / previously_insured 走 B-Tree 索引）→ P2 优化
+
+
+## 2026-07-31 · P1-03 数据统计 / 质量 / EDA 可视化 端到端 smoke（work/smoke_p103.py）
+
+**环境**：Python 3.13.3 + 临时 venv `.venv_q8/`（沿用 P1-01 同一 venv，含 matplotlib 3.11.1）。
+
+**用例与结果（10/10 PASS）**：
+
+| # | 用例 | 覆盖点 | 结果 |
+| --- | --- | --- | --- |
+| 1 | no token (statistics) | 401 / 1002 | PASS |
+| 2 | statistics(25) | total=25, gender M/F=12/13, response 0/1=19/6, age range 21..45 | PASS |
+| 3 | statistics(empty) | zeroed structure | PASS |
+| 4 | quality(25) | total=25, cols=15, dup=0, predicted_prob 缺 25 次 | PASS |
+| 5 | quality(empty) | zeroed structure | PASS |
+| 6 | viz/response_distribution | 合法 PNG b64 (~17.8KB) | PASS |
+| 7 | viz/gender_response | 合法 PNG b64 (~16.8KB) | PASS |
+| 8 | viz/age_distribution | 合法 PNG b64 (~19.6KB) | PASS |
+| 9 | viz/premium_distribution | 合法 PNG b64 (~20.0KB) | PASS |
+| 10 | viz/foobar | 1001 + message 含未知类型名 | PASS |
+
+**Bug 记录**：
+- BUG-012：第二度踩到 BUG-011。DataService 末尾追加 P1-03 时新建 class 覆盖旧类。修复：彻底重写为一个类。已加自我提示。
+- BUG-013：P1-03 case_2 留了两行 max 断言（50/45）。修复：删 50。
+- BUG-014：P1-03 case_4 断言 missing 全 0，但 predicted_prob 默认 None → 25 次缺失。修复：分列断言。
+
+**P1 累计 smoke**：P1-01-1 (10) + P1-01-2 (10) + P1-01-6 (7) + P1-02 (10) + P1-03 (10) = **47/47 全绿**。
+
+**未覆盖**（P1 后续任务）：
+- 38 万行 quality/visualization 性能基线（当前测 25 行）→ 需真实数据集
+- 中文字体 / 美化 → P2-07
+- 上传时持久化质量报告 → P2 优化（避免每次 quality 接口全表扫）
+
+---
+
+## P1-04 模型训练 · 测试报告
+
+**环境**：Windows / Python 3.13.3 / `.venv_q8`（Flask 3.0.3、SQLAlchemy 2.0.51、scikit-learn 1.9.0、xgboost 3.3.0、pandas 2.3.3、numpy 2.5.1）
+**入口**：`& ".venv_q8\Scripts\python.exe" work\smoke_p104.py`
+**数据**：600 条合成客户，正样本约 13%，标签与 `previously_insured` / `vehicle_damage` / `age` 有真实相关性
+
+### 用例结果（13/13 PASS）
+| # | 用例 | 断言 | 结果 |
+| --- | --- | --- | --- |
+| 1 | 无数据训练 | code=2001 | PASS |
+| 2 | 特征编码 | Male=0、`> 2 Years`=2、Yes=1、feature_names==FEATURE_NAMES | PASS |
+| 3 | 非法车龄 | BizException.code=1001 | PASS |
+| 4 | 普通用户 | HTTP 403 / code=1003 | PASS |
+| 5 | 未带 Token | code=1002 | PASS |
+| 6 | models=["svm"] | code=1001 | PASS |
+| 7 | test_size=0.9 | code=1001 | PASS |
+| 8 | 三模型训练 | results 含 3 个算法，best_model 在其中；耗时 1.95s | PASS |
+| 9 | 指标与选优 | 5 指标齐全、AUC∈[0,1]、best=AUC 最大者、最佳 AUC>0.6 | PASS |
+| 10 | 落库 | experiments=3 行、is_best 唯一、params JSON 四个 key 完整且长度一致 | PASS |
+| 11 | 落盘 | ≥3 个 .joblib，每个含 model 与 scaler | PASS |
+| 12 | 二次训练 | 4 行记录、is_best 仍唯一 | PASS |
+| 13 | 操作日志 | operation_logs 中 model_training 2 条 | PASS |
+
+### 回归
+P1-01-1 10/10、P1-01-2 10/10、P1-01 端到端 7/7、P1-02 10/10、P1-03 10/10 —— `data_processor.py` 追加 `prepare_features` 后既有解析链路无回归。
+
+**P1 累计 smoke：60/60（10+10+7+10+10+13）全绿。**
+
+### Bug 记录
+本轮 0 新增 Bug（编号仍至 BUG-014）。
+
+### 未覆盖
+- 38 万行真实数据集的训练耗时与 AUC 未实测。
+- `params` 覆盖超参（如 `{"xgboost":{"n_estimators":50}}`）只做了类型校验，未做端到端生效断言。
+- LR 的 `feature_importances` 走 `coef_` 绝对值分支，未单独断言数值合理性。

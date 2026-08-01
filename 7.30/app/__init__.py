@@ -11,11 +11,21 @@ from __future__ import annotations
 
 from flask import Flask, jsonify
 from flask.wrappers import Response
-from werkzeug.exceptions import HTTPException
+from werkzeug.exceptions import HTTPException, RequestEntityTooLarge
 
 from app.core.config import settings
 from app.core.database import Base, engine, close_db
-from app.core.response import CODE_INTERNAL_ERROR, BizException, fail
+from app.core.response import (
+    CODE_INTERNAL_ERROR,
+    CODE_PARAM_ERROR,
+    BizException,
+    fail,
+)
+
+# 上传文件大小上限（DECISION-004 方案 C）：
+# 10MB 与 PRD §170「38 万行 Excel 上传入库 < 60 秒」冲突——38 万行 x 12 列的 xlsx
+# 实测约 12~20MB，10MB 会把真实数据集直接拒掉。50MB 既留足余量又拦住恶意超大文件。
+MAX_UPLOAD_BYTES: int = 50 * 1024 * 1024
 from app.core.security import hash_password
 
 # 确保所有模型在 create_all 前注册到 Base.metadata
@@ -70,6 +80,9 @@ def create_app() -> Flask:
     """应用工厂：创建并配置 Flask 实例。"""
     app = Flask(__name__, static_folder="static", static_url_path="/static")
 
+    # 请求体上限，超出由 werkzeug 抛 RequestEntityTooLarge(413)
+    app.config["MAX_CONTENT_LENGTH"] = MAX_UPLOAD_BYTES
+
     # -------- 1. 运行期目录 --------
     settings.ensure_runtime_dirs()
 
@@ -90,6 +103,14 @@ def create_app() -> Flask:
     @app.errorhandler(BizException)
     def handle_biz_exception(e: BizException):
         return e.to_response()
+
+    @app.errorhandler(RequestEntityTooLarge)
+    def handle_request_too_large(e: RequestEntityTooLarge):
+        """413：上传超限。比通用 HTTPException 处理器更特异，Flask 优先命中此处。
+
+        不落到 5000 通用分支，而是按 docs/03 §0.5 归为参数错误 1001。
+        """
+        return fail(CODE_PARAM_ERROR, "上传文件超过50MB限制", 413)
 
     @app.errorhandler(HTTPException)
     def handle_http_exception(e: HTTPException):

@@ -413,3 +413,182 @@ P1-01-6 端到端（work/smoke_p101.py · 7/7）：
 - 不写 OperationLog（对齐 Gate WARNING 7-C）
 
 **下一步**：P1-03 数据统计 / 质量接口 / EDA 可视化（依赖 P1-01 + P1-02 完成）。
+
+
+## 2026-07-31 · P1-03 数据统计 / 质量 / EDA 可视化 · [x] 已完成
+
+**结论**：3 个 GET 路由（/statistics / /quality / /visualization/<chart_type>）实现，10/10 端到端 smoke 全绿。P1 累计 47/47 smoke 全绿。
+
+**修改原因**：完成 P1-03，对齐 docs/03 §2.3-2.5。
+
+**影响文件**：
+1. **新建** `app/utils/visualizer.py`（2.7KB）—— 4 个 chart 函数 + _to_base64 + CHART_FUNCS 映射
+2. **改** `app/services/data_service.py` —— 追加 statistics / quality / visualization 三个静态方法（**重写**合并到一个 DataService 类，避免 BUG-011 重演）
+3. **改** `app/api/v1/data.py` —— 追加 3 个 GET 路由
+4. **新建** `work/smoke_p103.py`（6.5KB）—— 10 用例 smoke
+5. **未触动** `app/models/customer.py` / `app/utils/data_processor.py` / 其它蓝图
+
+**复用清单**：
+- P0-02 `BizException(1001)` / `success()` / `get_db()`
+- P0-05 `@login_required`
+- P1-01-2 `compute_quality_report` 复用（quality 接口走同一条质量报告代码路径）
+- P1-02 `Customer.to_dict()` 序列化（避免 ORM 对象直接进 DataFrame）
+- matplotlib 3.11.1（requirements.txt 已装）
+
+**实现要点**：
+- `app/utils/visualizer.py` 第 1 行 `matplotlib.use("Agg")`（对齐 P0 Gate WARNING 7-A）
+- 4 个 chart：response_distribution（柱状）/ gender_response（分组柱状）/ age_distribution（直方图 20 bins）/ premium_distribution（直方图 30 bins）
+- base64 PNG 字符串：每张 ~17-20KB，PNG magic bytes 校验通过
+- `quality()` 从 DB 全量读回 → DataFrame → 复用 `compute_quality_report`（结构与 P1-01 上传时一致）
+- `statistics()` 用聚合查询（gender/response/age 三列）避免内存加载
+- 空数据：statistics/quality 返回 zeroed 结构；visualization 仍可生成空 PNG
+- 未知 chart_type → BizException(1001)
+
+**验证（work/smoke_p103.py · 10/10 PASS）**：
+
+| # | 用例 | 覆盖点 | 结果 |
+| --- | --- | --- | --- |
+| 1 | no token (statistics) | 401 / 1002 | PASS |
+| 2 | statistics(25) | total=25, gender M/F=12/13, response 0/1=19/6, age range 21..45 | PASS |
+| 3 | statistics(empty) | zeroed structure | PASS |
+| 4 | quality(25) | total=25, cols=15, dup=0, predicted_prob 缺 25 次 | PASS |
+| 5 | quality(empty) | zeroed structure | PASS |
+| 6 | viz/response_distribution | 合法 PNG b64 (~17.8KB) | PASS |
+| 7 | viz/gender_response | 合法 PNG b64 (~16.8KB) | PASS |
+| 8 | viz/age_distribution | 合法 PNG b64 (~19.6KB) | PASS |
+| 9 | viz/premium_distribution | 合法 PNG b64 (~20.0KB) | PASS |
+| 10 | viz/foobar (未知 chart_type) | 1001 + message 含未知类型名 | PASS |
+
+**P1 累计 smoke**：P1-01-1 (10) + P1-01-2 (10) + P1-01-6 (7) + P1-02 (10) + P1-03 (10) = **47/47 全绿**。
+
+**缺陷 & 修复**：
+- BUG-012：第二度踩到 BUG-011——在 DataService 末尾追加 P1-03 块时，新建 `class DataService:` 覆盖了含 upload / list_customers 的旧类，导致 P1-01 / P1-02 全 500。修复：彻底重写 data_service.py，把全部 5 个方法合并到唯一一个 `class DataService:`。已加自我提示避免再犯。回归：47/47 全绿。
+- BUG-013：P1-03 case_2 留了两行重复 max 断言（50 和 45），首次 run 错。修复：删除 50 那行。
+- BUG-014：P1-03 case_4 断言 missing_values 全 0，但 predicted_prob 默认 None → 25 次缺失。修复：分列断言，predicted_prob 允许 25。
+
+**清理**：
+- `instance/insurance.db` 在每次 smoke 之间清场
+- 临时 venv `.venv_q8/` 保留
+
+**遗留 / 备注**：
+- `quality()` 当前全表 → DataFrame → compute（38 万行 ~5-10s）；大数据量场景可考虑"上传时持久化最近一次质量报告"（新建 `data_quality_snapshots` 表），P2 优化项
+- `statistics()` 走聚合查询（O(N) 单次扫描），不会内存爆
+- `visualization()` 同 quality 全表加载；考虑 38 万行直方图渲染慢 → 加 bbox_inches='tight' 已裁剪；如未来 >100 万行需降采样
+- matplotlib Agg 模式无内存泄漏（plt.close(fig) 强制释放）
+- 中文字体未配置（按 Gate WARNING 7-D，标题/标签全英文，不影响功能；如需中文标题，P2-07 引入中文字体）
+- 不写 OperationLog（对齐 Gate WARNING 7-C）
+
+**下一步**：P1-04 模型模块 · 特征工程与训练（依赖 P1-01 已完成）。
+
+---
+
+## P1-04 模型模块 · 特征工程与训练（已完成）
+
+**结论**：`POST /api/v1/model/train` 上线，三算法训练 + ROC-AUC 选优 + experiments 落库 + joblib 落盘全部打通。Smoke 13/13 PASS，P1-01~03 回归 47/47 PASS，累计 60/60。
+
+### 修改原因
+TODO.md / TASKS.md 的 P1-04 验收项；同时顺带消除 P0 Gate Review 的 WARNING 7-C（缺 OperationLogService）。
+
+### 影响文件
+| 文件 | 类型 | 说明 |
+| --- | --- | --- |
+| `app/services/operation_log_service.py` | 新建 | `log(db, user_id, action, details)`，details dict→JSON；写日志失败 rollback 后静默返回 None，不影响主业务 |
+| `app/utils/data_processor.py` | 追加 | `prepare_features(df, with_target)` + `_encode_column` + `GENDER_MAP` / `VEHICLE_DAMAGE_MAP` / `VEHICLE_AGE_MAP` / `FEATURE_NAMES` / `TARGET_NAME`，原有 5 个公开函数未改动 |
+| `app/services/ml_service.py` | 新建 | `SUPPORTED_MODELS` / `_DEFAULT_PARAMS` / `_get_model` / `_feature_importances` / `_load_dataframe` / `MLService.train` |
+| `app/api/v1/model.py` | 重写占位 | `POST /train`（`@login_required` + `@role_required("admin")`）+ 4 个参数解析辅助 |
+| `work/smoke_p104.py` | 新建 | 13 用例 |
+
+### 复用清单
+- `Customer.to_dict()`（P1-02）读全量训练数据，无需再写 SQL
+- `COLUMN_RENAME`（P1-01）让 `prepare_features` 同时吃 Excel 大写列名与 ORM 小写列名
+- `BizException` / `success` / `role_required` / `get_db` 全部沿用 P0 基础设施
+- `Experiment` 模型（P0-03）字段零改动
+
+### 实现要点（对齐 docs/02 §2.3~§2.8）
+1. 编码：Gender/Vehicle_Damage=Label，Vehicle_Age=Ordinal（保留车龄大小关系）；Driving_License/Previously_Insured 不处理。`_encode_column` 先判 dtype，已是数值则直接返回，兼容重复调用。
+2. `train_test_split(stratify=y)`；`StandardScaler` 只 `fit_transform` 训练集，测试集只 `transform`。
+3. 不平衡：LR/RF `class_weight="balanced"`；XGBoost `scale_pos_weight = n_neg/n_pos`（仅按训练集统计）。
+4. 选优指标固定 ROC-AUC；写库前先 `update(is_best=False)` 全量失活，再置最佳，`is_best` 唯一。
+5. 持久化 `joblib.dump({"model", "scaler"})`，保证 P1-06 预测期特征分布一致。
+6. `experiments.params` 存 `roc/confusion_matrix/feature_importances/feature_names/train_config` JSON。
+7. 训练异常统一转 `BizException(3001, 500)`；数据不足（<20 行）转 `2001`。
+
+### 验证
+| 用例 | 结果 |
+| --- | --- |
+| 1 无数据训练 → 2001 | PASS |
+| 2 prepare_features 编码正确（Male=0 / >2 Years=2 / Yes=1） | PASS |
+| 3 非法 vehicle_age → BizException 1001 | PASS |
+| 4 普通用户训练 → 403/1003 | PASS |
+| 5 未认证 → 1002 | PASS |
+| 6 非法模型名 → 1001 | PASS |
+| 7 test_size=0.9 越界 → 1001 | PASS |
+| 8 三模型全量训练成功（600 行 1.95s） | PASS |
+| 9 5 指标齐全 + best 确实是 AUC 最高者 + AUC>0.6 | PASS |
+| 10 experiments 3 条 + is_best 唯一 + params JSON 可反序列化 | PASS |
+| 11 joblib bundle 含 model+scaler，≥3 个文件 | PASS |
+| 12 二次训练后 4 条记录、is_best 仍唯一 | PASS |
+| 13 operation_logs 写入 2 条 model_training | PASS |
+
+### 缺陷修复
+本轮无新增 Bug（BUG 编号仍停在 BUG-014）。规避了历史 BUG-011/012：`ml_service.py` 与 `model.py` 均为整文件一次写入，`data_processor.py` 用 `Add-Content` 纯追加，写完立即跑回归确认既有函数未丢。
+
+### 遗留
+- 训练耗时验收项"38 万行 < 60s"未用真实数据集实测（smoke 用 600 行合成数据，1.95s）；默认超参已按 RF `max_depth=12` / XGB `n_estimators=200` 控制规模。
+- `predicted_prob` 回写不在本轮范围（docs/02 §4.2 明确训练与预测是两个独立请求），留给 P1-06。
+- Gate WARNING 5-B（region_code / policy_sales_channel 用 Float）未处理，`prepare_features` 内 `pd.to_numeric` 已兼容。
+
+### 下一步
+P1-05：`GET /model/experiments` 分页 + `GET /model/best`（docs/03 §3.2 / §3.3）。
+
+---
+
+## DECISION-004 上传文件大小限制（50MB）· 已完成
+
+**结论**：按 DECISION-004 方案 C 落地。`MAX_CONTENT_LENGTH` 设为 50MB，413 有专属处理器返回统一 JSON 信封。新增 smoke 10/10 PASS，既有 6 份 smoke 零回归，验收脚本从 33/37 升至 34/37。
+
+### 修改原因
+Review Mode 验收发现 `MAX_CONTENT_LENGTH` 为 `None`（无任何上限）。但验收清单要求的 10MB 与 PRD §170「38 万行 Excel 上传入库 < 60 秒」冲突——38 万行 xlsx 约 12~20MB，10MB 会拒掉真实数据集。经确认取 50MB 折中。
+
+### 影响文件
+| 文件 | 类型 | 说明 |
+| --- | --- | --- |
+| `app/__init__.py` | 改 | 新增 `MAX_UPLOAD_BYTES` 常量、`app.config["MAX_CONTENT_LENGTH"]` 赋值、`RequestEntityTooLarge` 处理器；import 补 `RequestEntityTooLarge` 与 `CODE_PARAM_ERROR` |
+| `work/smoke_upload_limit.py` | 新建 | 10 用例 |
+| `work/acceptance_p1_data.py` | 改 | 用例 A10 断言值 10MB → 50MB |
+| `DECISION.md` | 追加 | DECISION-004 全文 |
+
+### 实现要点
+1. 上限定义为模块级常量 `MAX_UPLOAD_BYTES`，smoke 可直接 import 断言，避免魔法数字散落两处。
+2. 413 处理器注册在通用 `HTTPException` 处理器之前。`RequestEntityTooLarge` 是 `HTTPException` 子类，Flask 按异常类特异性匹配，能精确命中。
+3. 顺手修掉一个真实缺陷：改动前超限请求会落进通用 `Exception` 分支返回 `code=5000`「服务器内部错误」，把客户端错误误报为服务端故障。现按 docs/03 §0.5 归为 1001。
+4. 大小闸门在 werkzeug 层，早于路由与业务层，因此超限请求不会触及 `bulk_insert` 的清表逻辑——已有数据不会被误删（smoke 用例 10 专门断言）。
+
+### 验证
+| 用例 | 结果 |
+| --- | --- |
+| 1 `MAX_CONTENT_LENGTH == 50MB` 且等于 `MAX_UPLOAD_BYTES` | PASS |
+| 2 小文件（80 行真实 xlsx）上传 code=0、imported_count=80 | PASS |
+| 3 小文件真正落库（独立 Session 复查 count=80） | PASS |
+| 4 49MB 请求体通过大小闸门（非 413），被解析层判 2002 | PASS |
+| 5 51MB → HTTP 413 | PASS |
+| 6 51MB → code=1001 | PASS |
+| 7 message 含「50MB」 | PASS |
+| 8 data 为 null | PASS |
+| 9 413 响应体是 JSON 信封（Content-Type 为 application/json，键恰为 code/message/data，非 werkzeug HTML） | PASS |
+| 10 超限请求未清空已有 80 行数据 | PASS |
+
+### 回归
+P1-01-1 10/10、P1-01-2 10/10、P1-01 端到端 7/7、P1-02 10/10、P1-03 10/10、P1-04 13/13 —— 全部通过。累计 60/60 + 上传限制 10/10 = 70/70。
+验收脚本 `work/acceptance_p1_data.py`：34/37（余 3 项为 docs 冲突项，已决定保留现状）。
+
+### 缺陷修复
+BUG-015：超限上传返回 `code=5000`「服务器内部错误」，语义错误（客户端错误被报成服务端故障）。原因是无 413 处理器，异常落入通用 `Exception` 兜底分支。已修复为 `code=1001` + HTTP 413。
+
+### 遗留
+- 50MB 为按 38 万行推算的经验值，未用真实数据集实测体积。
+- `MAX_CONTENT_LENGTH` 全局生效，未来 `/model/import` 上传 .joblib 也受此限（当前无接口需超 50MB）。
+- 验收脚本余 3 项 FAIL（`uploaded_by` 字段、`customers.py` 复数命名、`Customer.bulk_create`）均与 docs/01 §5.1、docs/03 §2.1-2.2、docs/04 §4/§7 冲突，经确认保留现状，未列入本轮修改范围。
+
+### 下一步
+P1-05：`GET /model/experiments` 分页 + `GET /model/best`（docs/03 §3.2 / §3.3）。

@@ -22,6 +22,37 @@ bp = Blueprint("data", __name__, url_prefix="/api/v1/data")
 _ALLOWED_EXTENSIONS = {".xlsx", ".xls"}
 
 
+@bp.route("/statistics", methods=["GET"])
+@login_required
+def statistics():
+    """GET /data/statistics：数据概览（docs/03 §2.3）。
+
+    响应 data: {total, gender_distribution, response_distribution, age_stats}。
+    """
+    return success(DataService.statistics(get_db()))
+
+
+@bp.route("/quality", methods=["GET"])
+@login_required
+def quality():
+    """GET /data/quality：数据质量报告（docs/03 §2.4）。
+
+    响应 data: {total_rows, total_cols, missing_values, duplicates, dtypes}。
+    """
+    return success(DataService.quality(get_db()))
+
+
+@bp.route("/visualization/<chart_type>", methods=["GET"])
+@login_required
+def visualization(chart_type: str):
+    """GET /data/visualization/{chart_type}：EDA 可视化（docs/03 §2.5）。
+
+    chart_type ∈ response_distribution / gender_response / age_distribution / premium_distribution。
+    响应 data: {chart_type, image_base64, format: "png"}。
+    """
+    return success(DataService.visualization(get_db(), chart_type))
+
+
 @bp.route("/customers", methods=["GET"])
 @login_required
 def list_customers():

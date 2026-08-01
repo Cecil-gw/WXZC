@@ -38,7 +38,24 @@
 
 **P1-02 完成。P1 累计 smoke 37/37（10+10+7+10）全绿。**
 
-## P1-03 数据统计 / 质量接口 / EDA 可视化
+## P1-03 数据统计 / 质量接口 / EDA 可视化 · [x] 已完成
+
+- [x] P1-03-1 visualizer.py 4 个 chart 函数（matplotlib Agg）
+- [x] P1-03-2 DataService.statistics / quality / visualization
+- [x] P1-03-3 3 个 GET 路由（/statistics / /quality / /visualization/<chart_type>）
+- [x] P1-03-4 Smoke 10 用例（work/smoke_p103.py）· 10/10 PASS
+
+**P1-03 完成。P1 累计 smoke 47/47（10+10+7+10+10）全绿。**
+
+## P1-04 模型模块 · 特征工程与训练 · [x] 已完成
+
+- [x] P1-04-1 operation_log_service.log（补 P0 Gate WARNING 7-C）
+- [x] P1-04-2 data_processor.prepare_features（Label / Ordinal 编码 + FEATURE_NAMES）
+- [x] P1-04-3 ml_service._get_model / MLService.train（stratify + scaler 防泄漏 + 不平衡处理 + ROC-AUC 选优 + joblib bundle + experiments 落库）
+- [x] P1-04-4 POST /model/train（admin only）+ 操作日志
+- [x] P1-04-5 Smoke 13 用例（work/smoke_p104.py）· 13/13 PASS
+
+**P1-04 完成。P1 累计 smoke 60/60（10+10+7+10+10+13）全绿。下一步 P1-05：GET /model/experiments + GET /model/best。**
 
 ---
 

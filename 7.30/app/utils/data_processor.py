@@ -236,3 +236,108 @@ def _coerce(value: Any, target_type: Type[Any]) -> Any:
     if target_type is str:
         return str(value)
     raise TypeError(f"unsupported target type: {target_type}")
+
+# ====================================================================
+# P1-04：特征工程（docs/02_AI技术方案.md §2.2 / §2.3）
+# ====================================================================
+
+# 三种编码策略的映射表
+GENDER_MAP: Dict[str, int] = {"Male": 0, "Female": 1}
+VEHICLE_DAMAGE_MAP: Dict[str, int] = {"No": 0, "Yes": 1}
+VEHICLE_AGE_MAP: Dict[str, int] = {"< 1 Year": 0, "1-2 Year": 1, "> 2 Years": 2}
+
+# 模型输入特征顺序（必须固定，训练/预测共用，否则列错位）
+FEATURE_NAMES: List[str] = [
+    "gender",
+    "age",
+    "driving_license",
+    "region_code",
+    "previously_insured",
+    "vehicle_age",
+    "vehicle_damage",
+    "annual_premium",
+    "policy_sales_channel",
+    "vintage",
+]
+
+TARGET_NAME: str = "response"
+
+
+def prepare_features(df: pd.DataFrame, with_target: bool = True):
+    """特征工程：编码 + 列筛选。返回 `(X, y, feature_names)`。
+
+    - Gender / Vehicle_Damage 用 Label 编码；Vehicle_Age 用 Ordinal 编码（保留车龄顺序）；
+    - Driving_License / Previously_Insured 是 0/1 整数，不处理；
+    - 数值列的 StandardScaler 放在 `ml_service`，因为 scaler 只能 fit 训练集（防泄漏）；
+    - 列名兼容 Excel 原始大写（Gender/Age/...）与 ORM 小写（gender/age/...）。
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        原始客户数据。
+    with_target : bool
+        True 时要求含标签列并返回 y；False（预测场景）返回 y=None。
+
+    Returns
+    -------
+    (pd.DataFrame, Optional[pd.Series], List[str])
+        X（列顺序 = FEATURE_NAMES）、y、feature_names。
+
+    Raises
+    ------
+    BizException
+        缺少特征列 / 数据为空 / 编码后仍有缺失值 → 1001。
+    """
+    if df is None or df.empty:
+        raise BizException(CODE_PARAM_ERROR, "数据为空，无法进行特征工程", 400)
+
+    # 统一列名到 ORM 小写风格
+    work = df.rename(columns=COLUMN_RENAME).copy()
+    if "Id" in work.columns and "id" not in work.columns:
+        work = work.rename(columns={"Id": "id"})
+
+    missing = [c for c in FEATURE_NAMES if c not in work.columns]
+    if missing:
+        raise BizException(
+            CODE_PARAM_ERROR, f"缺少特征列: {', '.join(missing)}", 400
+        )
+    if with_target and TARGET_NAME not in work.columns:
+        raise BizException(CODE_PARAM_ERROR, f"缺少标签列: {TARGET_NAME}", 400)
+
+    # 编码（已是数值的情况下 map 会产生 NaN，故先判断 dtype）
+    work["gender"] = _encode_column(work["gender"], GENDER_MAP, "gender")
+    work["vehicle_damage"] = _encode_column(
+        work["vehicle_damage"], VEHICLE_DAMAGE_MAP, "vehicle_damage"
+    )
+    work["vehicle_age"] = _encode_column(
+        work["vehicle_age"], VEHICLE_AGE_MAP, "vehicle_age"
+    )
+
+    X = work[FEATURE_NAMES].apply(pd.to_numeric, errors="coerce")
+    if X.isna().any().any():
+        bad = [c for c in FEATURE_NAMES if bool(X[c].isna().any())]
+        raise BizException(
+            CODE_PARAM_ERROR, f"特征列存在无法编码的值: {', '.join(bad)}", 400
+        )
+
+    y = None
+    if with_target:
+        y = pd.to_numeric(work[TARGET_NAME], errors="coerce")
+        if y.isna().any():
+            raise BizException(CODE_PARAM_ERROR, "标签列 response 存在非法值", 400)
+        y = y.astype(int)
+
+    return X, y, list(FEATURE_NAMES)
+
+
+def _encode_column(series: pd.Series, mapping: Dict[str, int], name: str) -> pd.Series:
+    """按 mapping 编码字符串列；若列已是数值则原样返回。"""
+    if pd.api.types.is_numeric_dtype(series):
+        return series
+    encoded = series.astype(str).str.strip().map(mapping)
+    if encoded.isna().any():
+        allowed = ", ".join(mapping.keys())
+        raise BizException(
+            CODE_PARAM_ERROR, f"{name} 存在非法取值，允许: {allowed}", 400
+        )
+    return encoded

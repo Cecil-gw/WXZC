@@ -188,3 +188,56 @@
 - gender / keyword 走自然索引（gender 低基数不加索引；keyword 是 id 主键精确匹配自动命中）
 - Customer.to_dict() 返回 15 字段（12 业务 + predicted_prob + created_at + updated_at），与 API 文档 §2.2 "items 元素含全字段" 一致
 - BUG-011 已修：上一轮误重定义 DataService 类导致 P1-01-6 smoke 全部 500；已合并为一个类并回归通过
+
+
+## 2026-07-31 · P1-03 数据统计 / 质量 / EDA 可视化
+
+**范围**：`app/utils/visualizer.py`（新建，4 个 chart） + `app/services/data_service.py`（追加 3 方法 + 重写合并类） + `app/api/v1/data.py`（追加 3 路由） + `work/smoke_p103.py`（10 用例）。
+
+| 维度 | 结果 | 说明 |
+| --- | --- | --- |
+| 架构 | ✅ 通过 | 三层职责清晰：visualizer.py（纯可视化，无 Flask/DB） + DataService（编排 + 业务） + API（参数解析 + 委托）。matplotlib Agg 后端在 utils 层第一行 import，Web 层不感知 |
+| 后端 | ✅ 通过 | visualizer 纯函数（输入 DataFrame，输出 base64 str）；Service 用聚合查询而非全表加载（statistics）；quality/visualization 全表加载走 pandas；API 仅做委托 |
+| AI | ➖ 不适用 | 本任务不涉及模型训练；EDA 图表仅展示数据分布 |
+| 安全 | ✅ 通过 | @login_required 全覆盖；未知 chart_type 拒绝 1001；matplotlib Agg 无交互式后端风险；base64 字符串前端渲染不执行 JS |
+| 测试 | ✅ 通过（端到端 10/10） | 10 用例覆盖：鉴权 / 2 种数据规模 / 4 种图表（PNG magic bytes 校验）/ 未知类型 / 空数据；P1 累计 47/47 smoke 全绿 |
+
+**结论**：P1-03 通过审查，可标记 `[x]` 完成，继续 P1-04。
+
+**遗留 / 备注**：
+- BUG-012 已修：第二度踩到 BUG-011，已彻底重写 data_service.py 把全部方法合并到唯一类
+- matplotlib Agg 后端在 Windows / Linux / Docker 均安全（已对齐 Gate WARNING 7-A）
+- 中文字体未配置（按 Gate WARNING 7-D，当前标题/标签全英文）
+- visualizer 输出 PNG 17-20KB，base64 字符串 ~24KB，单接口响应 < 30KB
+- quality / visualization 全表加载在 38 万行下预计 5-10s；如需 P1 性能基线达标（PRD < 60s 训练时间），需真实数据集压测
+
+---
+
+## P1-04 模型训练 · Code Review
+
+| 维度 | 检查项 | 结论 |
+| --- | --- | --- |
+| 架构 | 分层是否清晰 | PASS。API 只解析参数，MLService 做编排，data_processor 做纯特征工程，无跨层调用 |
+| 架构 | 是否重复实现 | PASS。复用 `Customer.to_dict` / `COLUMN_RENAME` / `BizException` / `role_required`，未新建平行工具 |
+| 架构 | 循环依赖 | PASS。依赖单向：api → services → utils/models → core |
+| 后端 | 错误码一致性 | PASS。1001 参数、1002 未认证、1003 越权、2001 无数据、3001 训练失败，全部对齐 docs/03 §0.5 |
+| 后端 | 事务安全 | PASS。`is_best` 全量失活与新记录插入在同一 `commit`；日志写入独立且失败静默 |
+| 后端 | 响应格式 | PASS。统一 `success()` 信封，`{best_model, results}` 对齐 docs/03 §3.1 |
+| AI | 编码策略 | PASS。Label / Ordinal / 不处理三类严格按 docs/02 §2.2 表格 |
+| AI | 数据泄漏 | PASS。scaler 只 fit 训练集；`stratify=y` 保证分层 |
+| AI | 不平衡处理 | PASS。LR/RF `class_weight="balanced"`，XGB `scale_pos_weight` 只按训练集统计（不用测试集，避免泄漏） |
+| AI | 预测一致性 | PASS。`joblib.dump({"model","scaler"})` 同 bundle 落盘 |
+| 安全 | 权限 | PASS。`/train` 双装饰器 admin-only，smoke 用例 4/5 覆盖 |
+| 安全 | 输入校验 | PASS。models 元素类型、test_size 区间 [0.05,0.5]、random_state 整数、params 结构均校验；`isinstance(raw, bool)` 排除 True/False 混入数字参数 |
+| 测试 | 覆盖度 | PASS。13 用例覆盖正常/越权/未认证/非法参数/无数据/落库/落盘/重训/日志 |
+
+### 结论
+PASS，可进入 P1-05。
+
+### 遗留与技术债
+| 编号 | 内容 | 计划 |
+| --- | --- | --- |
+| DEBT-P104-1 | 38 万行真实数据训练耗时未实测 | 拿到真实数据集后补一次性能验证 |
+| DEBT-P104-2 | `params` 覆盖超参未做生效断言 | P1-05 顺带补 1 条用例 |
+| DEBT-P104-3 | 训练为同步阻塞请求，大数据量下 HTTP 可能超时 | 教学项目暂不引入任务队列，P2 视情况评估 |
+| WARNING 5-C | `PromptTemplate.is_active` 无唯一约束 | P1-12 必须事务内先全量失活再激活（本轮 `is_best` 已采用同一模式，可直接照搬） |
