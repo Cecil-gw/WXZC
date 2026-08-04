@@ -1,0 +1,224 @@
+{% extends "base.html" %}
+
+{% block title %}客户列表 - 保险营销系统{% endblock %}
+
+{% block content %}
+<div class="row mb-3">
+    <div class="col">
+        <h4 class="mb-1"><i class="bi bi-people"></i> 客户列表</h4>
+        <p class="text-muted mb-0" id="table-subtitle">显示前 20 条客户记录</p>
+    </div>
+    <div class="col-auto">
+        <div class="input-group">
+            <input type="text" class="form-control" id="search-input" placeholder="搜索客户...">
+            <button class="btn btn-outline-secondary" id="search-btn"><i class="bi bi-search"></i></button>
+        </div>
+    </div>
+</div>
+
+<div class="card shadow-sm border-0">
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover align-middle mb-0" id="customers-table">
+                <thead class="table-light">
+                    <tr>
+                        <th scope="col" class="col-id">ID</th>
+                        <th scope="col">Gender</th>
+                        <th scope="col">Age</th>
+                        <th scope="col">Vehicle_Age</th>
+                        <th scope="col">Vehicle_Damage</th>
+                        <th scope="col">Annual_Premium</th>
+                        <th scope="col">Policy_Region</th>
+                        <th scope="col">Response</th>
+                    </tr>
+                </thead>
+                <tbody id="customers-body">
+                    <tr>
+                        <td colspan="8" class="text-center py-5 text-muted">
+                            <div class="spinner-border" role="status"></div>
+                            <div class="mt-2">加载中...</div>
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<div class="row mt-3 align-items-center">
+    <div class="col-md-4">
+        <small class="text-muted" id="pagination-info">第 0 页 / 共 0 页</small>
+    </div>
+    <div class="col-md-4">
+        <nav aria-label="客户分页">
+            <ul class="pagination justify-content-center mb-0" id="pagination">
+                <li class="page-item disabled"><a class="page-link" href="#" id="prev-page">上一页</a></li>
+                <li class="page-item disabled"><a class="page-link" href="#" id="next-page">下一页</a></li>
+            </ul>
+        </nav>
+    </div>
+    <div class="col-md-4 text-end">
+        <select class="form-select form-select-sm d-inline-block" style="width:auto;" id="page-size">
+            <option value="10">10 条/页</option>
+            <option value="20" selected>20 条/页</option>
+            <option value="50">50 条/页</option>
+        </select>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const state = {
+        page: 1,
+        pageSize: 20,
+        total: 0,
+        totalPages: 0,
+        keyword: ''
+    };
+
+    loadCustomers();
+
+    document.getElementById('search-btn').addEventListener('click', function() {
+        state.keyword = document.getElementById('search-input').value.trim();
+        state.page = 1;
+        loadCustomers();
+    });
+
+    document.getElementById('search-input').addEventListener('keypress', function(e) {
+        if (e.key === 'Enter') {
+            state.keyword = this.value.trim();
+            state.page = 1;
+            loadCustomers();
+        }
+    });
+
+    document.getElementById('prev-page').addEventListener('click', function(e) {
+        e.preventDefault();
+        if (state.page > 1) {
+            state.page--;
+            loadCustomers();
+        }
+    });
+
+    document.getElementById('next-page').addEventListener('click', function(e) {
+        e.preventDefault();
+        if (state.page < state.totalPages) {
+            state.page++;
+            loadCustomers();
+        }
+    });
+
+    document.getElementById('page-size').addEventListener('change', function() {
+        state.pageSize = parseInt(this.value);
+        state.page = 1;
+        loadCustomers();
+    });
+
+    async function loadCustomers() {
+        const tbody = document.getElementById('customers-body');
+        tbody.innerHTML = `
+            <tr>
+                <td colspan="8" class="text-center py-5 text-muted">
+                    <div class="spinner-border" role="status"></div>
+                    <div class="mt-2">加载中...</div>
+                </td>
+            </tr>
+        `;
+
+        try {
+            const params = new URLSearchParams({
+                page: state.page,
+                page_size: state.pageSize
+            });
+            if (state.keyword) params.append('keyword', state.keyword);
+
+            const res = await api.get('/api/v1/customers?' + params.toString());
+
+            if (res.code === 0) {
+                const { items, total, page, page_size, total_pages } = res.data;
+                state.total = total;
+                state.totalPages = total_pages;
+                state.page = page;
+
+                renderTable(items);
+                renderPagination();
+            } else {
+                tbody.innerHTML = `<tr><td colspan="8" class="text-center py-5 text-danger">${res.message || '加载失败'}</td></tr>`;
+            }
+        } catch (e) {
+            if (e.status === 401) {
+                Auth.logout();
+                window.location.href = '/login';
+            } else {
+                tbody.innerHTML = `<tr><td colspan="8" class="text-center py-5 text-danger">网络错误，请稍后重试</td></tr>`;
+            }
+        }
+    }
+
+    function renderTable(items) {
+        const tbody = document.getElementById('customers-body');
+
+        if (!items || items.length === 0) {
+            tbody.innerHTML = `<tr><td colspan="8" class="text-center py-5 text-muted">暂无数据</td></tr>`;
+            return;
+        }
+
+        tbody.innerHTML = items.map(c => `
+            <tr>
+                <td>${c.id ?? '-'}</td>
+                <td>${c.gender ?? '-'}</td>
+                <td>${c.age ?? '-'}</td>
+                <td>${c.vehicle_age ?? '-'}</td>
+                <td>${c.vehicle_damage ?? '-'}</td>
+                <td>${c.annual_premium ?? '-'}</td>
+                <td>${c.policy_region ?? '-'}</td>
+                <td>${c.response
+                    ? '<span class="badge bg-success">是</span>'
+                    : '<span class="badge bg-secondary">否</span>'}</td>
+            </tr>
+        `).join('');
+    }
+
+    function renderPagination() {
+        const prev = document.getElementById('prev-page').closest('.page-item');
+        const next = document.getElementById('next-page').closest('.page-item');
+
+        document.getElementById('pagination-info').textContent =
+            `第 ${state.page} 页 / 共 ${state.totalPages} 页 | 合计 ${state.total} 条`;
+
+        prev.classList.toggle('disabled', state.page <= 1);
+        next.classList.toggle('disabled', state.page >= state.totalPages);
+
+        let pagesHtml = '';
+        const maxShow = 5;
+        let start = Math.max(1, state.page - 2);
+        let end = Math.min(state.totalPages, start + maxShow - 1);
+        start = Math.max(1, end - maxShow + 1);
+
+        for (let i = start; i <= end; i++) {
+            pagesHtml += `<li class="page-item ${i === state.page ? 'active' : ''}"><a class="page-link" href="#" data-page="${i}">${i}</a></li>`;
+        }
+
+        const prevLi = document.getElementById('prev-page').closest('.page-item');
+        const nextLi = document.getElementById('next-page').closest('.page-item');
+        prevLi.after(...htmlToElements(pagesHtml));
+
+        document.querySelectorAll('#pagination .page-link[data-page]').forEach(link => {
+            link.addEventListener('click', function(e) {
+                e.preventDefault();
+                state.page = parseInt(this.dataset.page);
+                loadCustomers();
+            });
+        });
+    }
+
+    function htmlToElements(html) {
+        const template = document.createElement('template');
+        template.innerHTML = html;
+        return Array.from(template.content.children);
+    }
+});
+</script>
+{% endblock %}

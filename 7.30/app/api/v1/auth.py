@@ -14,7 +14,7 @@ from app.core.response import CODE_PARAM_ERROR, CODE_UNAUTHORIZED, BizException,
 from app.schemas.auth import LoginRequest, RegisterRequest
 from app.services.auth_service import AuthService
 
-bp = Blueprint("auth", __name__, url_prefix="/api/v1/auth")
+bp = Blueprint("auth", __name__)
 
 
 def _validate(schema_cls, data):

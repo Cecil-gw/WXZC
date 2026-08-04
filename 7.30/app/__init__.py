@@ -78,7 +78,14 @@ def _seed_prompt_template() -> None:
 
 def create_app() -> Flask:
     """应用工厂：创建并配置 Flask 实例。"""
-    app = Flask(__name__, static_folder="static", static_url_path="/static")
+    import os
+    from pathlib import Path
+    base_dir = Path(__file__).parent.parent.absolute()
+    app = Flask(
+        __name__,
+        static_folder=os.path.normpath(str(base_dir / "app" / "static")),
+        static_url_path="/static",
+    )
 
     # 请求体上限，超出由 werkzeug 抛 RequestEntityTooLarge(413)
     app.config["MAX_CONTENT_LENGTH"] = MAX_UPLOAD_BYTES
@@ -95,6 +102,11 @@ def create_app() -> Flask:
     @app.route("/")
     def index() -> Response:
         return app.send_static_file("index.html")
+
+    @app.route("/favicon.ico")
+    def favicon():
+        """空响应favicon，避免404"""
+        return ("", 204)
 
     # -------- 4. teardown 钩子 --------
     app.teardown_appcontext(close_db)
@@ -114,11 +126,15 @@ def create_app() -> Flask:
 
     @app.errorhandler(HTTPException)
     def handle_http_exception(e: HTTPException):
-        return fail(CODE_INTERNAL_ERROR, e.description, e.code)
+        from app.core.response import CODE_NOT_FOUND
+        biz_code = CODE_NOT_FOUND if e.code == 404 else CODE_INTERNAL_ERROR
+        return fail(biz_code, e.description, e.code)
 
     @app.errorhandler(Exception)
     def handle_unexpected(e: Exception):
-        return fail(CODE_INTERNAL_ERROR, "服务器内部错误", 500)
+        import traceback, logging
+        logging.error("未捕获的异常:\n%s", traceback.format_exc())
+        return fail(CODE_INTERNAL_ERROR, "服务器内部错误: " + str(e), 500)
 
     # -------- 6. 首次启动 seed --------
     with app.app_context():

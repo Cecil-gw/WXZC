@@ -126,22 +126,19 @@ class DataService:
                 "response_distribution": {"0": 0, "1": 0},
                 "age_stats": {"min": 0, "max": 0, "avg": 0.0},
             }
-        rows = db.query(Customer.gender, Customer.response, Customer.age).all()
-        gender_dist: Dict[str, int] = {}
-        response_dist: Dict[str, int] = {}
-        ages: List[int] = []
-        for g, r, a in rows:
-            gender_dist[g] = gender_dist.get(g, 0) + 1
-            response_dist[str(int(r))] = response_dist.get(str(int(r)), 0) + 1
-            ages.append(int(a))
+        df = pd.read_sql(
+            db.query(Customer.gender, Customer.response, Customer.age).statement,
+            db.bind,
+        )
+        age_series = df["age"]
         return {
             "total": total,
-            "gender_distribution": gender_dist,
-            "response_distribution": response_dist,
+            "gender_distribution": df["gender"].value_counts().to_dict(),
+            "response_distribution": df["response"].astype(int).astype(str).value_counts().to_dict(),
             "age_stats": {
-                "min": min(ages),
-                "max": max(ages),
-                "avg": round(sum(ages) / len(ages), 2),
+                "min": int(age_series.min()),
+                "max": int(age_series.max()),
+                "avg": round(float(age_series.mean()), 2),
             },
         }
 
@@ -150,8 +147,8 @@ class DataService:
     @staticmethod
     def quality(db: Session) -> Dict[str, Any]:
         """GET /data/quality（docs/03 §2.4）。从 DB 读全量回 DataFrame，复用 P1-01-2 的 compute_quality_report。"""
-        rows = [c.to_dict() for c in db.query(Customer).all()]
-        if not rows:
+        df = pd.read_sql(db.query(Customer).statement, db.bind)
+        if df.empty:
             return {
                 "total_rows": 0,
                 "total_cols": 0,
@@ -159,7 +156,6 @@ class DataService:
                 "duplicates": 0,
                 "dtypes": {},
             }
-        df = pd.DataFrame(rows)
         return compute_quality_report(df)
 
     # ----- P1-03：EDA 可视化 -----
@@ -171,8 +167,7 @@ class DataService:
             raise BizException(
                 1001, f"未知图表类型: {chart_type}，可选 {list(CHART_FUNCS.keys())}", 400
             )
-        rows = [c.to_dict() for c in db.query(Customer).all()]
-        df = pd.DataFrame(rows) if rows else pd.DataFrame()
+        df = pd.read_sql(db.query(Customer).statement, db.bind)
         image_base64 = CHART_FUNCS[chart_type](df)
         return {
             "chart_type": chart_type,

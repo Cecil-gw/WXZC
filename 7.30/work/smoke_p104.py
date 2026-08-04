@@ -80,7 +80,10 @@ def main() -> int:
     client = app.test_client()
 
     # ---- case 1: 无数据训练 -> 2001 ----
+    # 自清理所用表：不依赖删除 db 文件（Windows 下文件可能被其它进程占用，
+    # 静默失败会让 operation_logs 跨轮累积，导致 case 13 计数偏大）
     db = SessionLocal()
+    db.query(OperationLog).filter(OperationLog.action == "model_training").delete()
     db.query(Experiment).delete()
     db.query(Customer).delete()
     db.commit()

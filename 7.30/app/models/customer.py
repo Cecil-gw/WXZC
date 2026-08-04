@@ -90,6 +90,64 @@ class Customer(Base):
         )
         return items, total
 
+    @staticmethod
+    def predicted_probs(db) -> List[float]:
+        """取全部非空 predicted_prob，供分位数阈值计算（docs/02 §2.7）。
+
+        只取概率一列而非整行：38 万行时整行 ORM 实例化会白白吃掉内存，
+        而分位数计算只需要这一列。
+        """
+        rows = (
+            db.query(Customer.predicted_prob)
+            .filter(Customer.predicted_prob.isnot(None))
+            .all()
+        )
+        return [r[0] for r in rows]
+
+    @staticmethod
+    def paginate_by_prob(db, threshold: float, page: int = 1, per_page: int = 20):
+        """按 predicted_prob >= threshold 过滤并倒序分页。返回 (items, total)。
+
+        排序用 `predicted_prob desc, id asc`：概率相同时以 id 兜底，
+        保证翻页结果稳定（与 Experiment.paginate 的防御姿势一致）。
+        """
+        q = db.query(Customer).filter(
+            Customer.predicted_prob.isnot(None),
+            Customer.predicted_prob >= threshold,
+        )
+        total = q.count()
+        items = (
+            q.order_by(Customer.predicted_prob.desc(), Customer.id.asc())
+            .offset((page - 1) * per_page)
+            .limit(per_page)
+            .all()
+        )
+        return items, total
+
+    @staticmethod
+    def by_ids(db, ids: List[int]) -> List["Customer"]:
+        """按 id 列表取客户，结果按 id 升序。
+
+        不保证返回数量等于入参数量：不存在的 id 直接被忽略，由调用方决定
+        是「部分成功」还是「整批失败」。
+        """
+        if not ids:
+            return []
+        return (
+            db.query(Customer)
+            .filter(Customer.id.in_(list(set(ids))))
+            .order_by(Customer.id.asc())
+            .all()
+        )
+    def to_target_dict(self):
+        """高潜客户精简序列化（docs/03 §4.1 只要这五个字段）。"""
+        return {
+            "id": self.id,
+            "gender": self.gender,
+            "age": self.age,
+            "annual_premium": self.annual_premium,
+            "predicted_prob": self.predicted_prob,
+        }
     def to_dict(self):
         """序列化为 dict，供 JSON 响应。"""
         return {

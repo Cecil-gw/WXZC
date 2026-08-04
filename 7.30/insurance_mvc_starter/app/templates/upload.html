@@ -1,0 +1,156 @@
+{% extends "base.html" %}
+
+{% block title %}数据上传 - 保险营销系统{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-md-8">
+        <div class="card shadow-sm border-0">
+            <div class="card-header bg-warning text-white py-3">
+                <h4 class="mb-0"><i class="bi bi-upload"></i> 数据上传</h4>
+                <small>仅支持 .xlsx / .xls 格式文件</small>
+            </div>
+            <div class="card-body p-4">
+                <form id="upload-form" action="/api/v1/data/upload" method="post" enctype="multipart/form-data">
+                    <div class="mb-3">
+                        <label for="file-input" class="form-label fw-medium">选择文件</label>
+                        <input type="file" class="form-control" id="file-input" name="file" accept=".xlsx,.xls" required>
+                        <div class="form-text">支持 Excel 格式：.xlsx, .xls</div>
+                    </div>
+                    <div class="mb-3">
+                        <label for="description" class="form-label fw-medium">数据描述（可选）</label>
+                        <textarea class="form-control" id="description" name="description" rows="2" placeholder="简要描述本次上传的数据内容"></textarea>
+                    </div>
+                    <div class="d-grid">
+                        <button type="submit" class="btn btn-warning btn-lg" id="upload-btn">
+                            <i class="bi bi-upload"></i> 上传并导入
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        <div class="card shadow-sm border-0 mt-4" id="result-card" style="display:none;">
+            <div class="card-header bg-light">
+                <h5 class="mb-0"><i class="bi bi-clipboard-data"></i> 上传结果</h5>
+            </div>
+            <div class="card-body">
+                <div id="result-summary" class="mb-3"></div>
+                <div class="row g-3" id="result-stats"></div>
+                <hr>
+                <h6>数据质量报告</h6>
+                <div id="quality-report" class="table-responsive"></div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const form = document.getElementById('upload-form');
+    const fileInput = document.getElementById('file-input');
+    const uploadBtn = document.getElementById('upload-btn');
+    const resultCard = document.getElementById('result-card');
+
+    form.addEventListener('submit', async function(e) {
+        e.preventDefault();
+
+        const file = fileInput.files[0];
+        if (!file) {
+            alert('请先选择文件');
+            return;
+        }
+
+        if (!/\.(xlsx|xls)$/i.test(file.name)) {
+            alert('仅支持 .xlsx 或 .xls 格式文件');
+            return;
+        }
+
+        uploadBtn.disabled = true;
+        uploadBtn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> 上传中...';
+
+        try {
+            const formData = new FormData();
+            formData.append('file', file);
+            const desc = document.getElementById('description').value;
+            if (desc) formData.append('description', desc);
+
+            const res = await fetch('/api/v1/data/upload', {
+                method: 'POST',
+                headers: Auth.getAuthHeader(),
+                body: formData
+            });
+
+            if (res.status === 401) {
+                Auth.logout();
+                window.location.href = '/login';
+                return;
+            }
+
+            const data = await res.json();
+
+            if (res.ok && data.code === 0) {
+                displayResult(data.data);
+            } else {
+                alert('上传失败：' + (data.message || '未知错误'));
+            }
+        } catch (err) {
+            alert('网络错误：' + err.message);
+        } finally {
+            uploadBtn.disabled = false;
+            uploadBtn.innerHTML = '<i class="bi bi-upload"></i> 上传并导入';
+        }
+    });
+
+    function displayResult(data) {
+        resultCard.style.display = 'block';
+        document.getElementById('result-summary').innerHTML = `
+            <div class="alert alert-success">
+                <i class="bi bi-check-circle"></i> 文件 "${data.filename}" 上传成功！
+            </div>
+        `;
+
+        const statsHtml = `
+            <div class="col-sm-6 col-md-3">
+                <div class="stat-item">
+                    <h3 class="text-primary">${data.total_rows || 0}</h3>
+                    <small class="text-muted">总行数</small>
+                </div>
+            </div>
+            <div class="col-sm-6 col-md-3">
+                <div class="stat-item">
+                    <h3 class="text-success">${data.imported || 0}</h3>
+                    <small class="text-muted">已导入</small>
+                </div>
+            </div>
+            <div class="col-sm-6 col-md-3">
+                <div class="stat-item">
+                    <h3 class="text-danger">${data.skipped || 0}</h3>
+                    <small class="text-muted">跳过行数</small>
+                </div>
+            </div>
+            <div class="col-sm-6 col-md-3">
+                <div class="stat-item">
+                    <h3 class="text-warning">${(data.duration || 0) + 's'}</h3>
+                    <small class="text-muted">处理耗时</small>
+                </div>
+            </div>
+        `;
+        document.getElementById('result-stats').innerHTML = statsHtml;
+
+        if (data.quality_report) {
+            let qrHtml = '<table class="table table-sm table-striped"><tbody>';
+            for (const [key, value] of Object.entries(data.quality_report)) {
+                qrHtml += `<tr><td class="fw-medium">${key}</td><td>${value}</td></tr>`;
+            }
+            qrHtml += '</tbody></table>';
+            document.getElementById('quality-report').innerHTML = qrHtml;
+        } else {
+            document.getElementById('quality-report').innerHTML = '<p class="text-muted">暂无质量报告</p>';
+        }
+    }
+});
+</script>
+{% endblock %}

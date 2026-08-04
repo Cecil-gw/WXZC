@@ -17,7 +17,7 @@ from app.core.dependencies import login_required
 from app.core.response import CODE_PARAM_ERROR, BizException, success
 from app.services.data_service import DataService
 
-bp = Blueprint("data", __name__, url_prefix="/api/v1/data")
+bp = Blueprint("data", __name__)
 
 _ALLOWED_EXTENSIONS = {".xlsx", ".xls"}
 

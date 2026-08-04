@@ -1,0 +1,52 @@
+# 保险精准营销系统 - Docker 忽略文件
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# 虚拟环境
+venv/
+.venv/
+env/
+.env/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Git
+.git/
+.gitignore
+.gitattributes
+
+# 临时文件
+*.log
+*.tmp
+.DS_Store
+
+# 文档（可选：保留或排除）
+*.md
+docs/
+
+# 测试（可选：生产环境排除）
+tests/
+test_*.py
+pytest.ini

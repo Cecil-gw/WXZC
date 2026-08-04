@@ -314,3 +314,343 @@ P1-01-1 10/10、P1-01-2 10/10、P1-01 端到端 7/7、P1-02 10/10、P1-03 10/10 
 - 38 万行真实数据集的训练耗时与 AUC 未实测。
 - `params` 覆盖超参（如 `{"xgboost":{"n_estimators":50}}`）只做了类型校验，未做端到端生效断言。
 - LR 的 `feature_importances` 走 `coef_` 绝对值分支，未单独断言数值合理性。
+
+---
+
+## P1-05 实验记录 / 最佳模型查询 · 测试报告
+
+**环境**：Windows / Python 3.13.3 / `.venv_q8`（Flask 3.0.3、SQLAlchemy 2.0.51、scikit-learn 1.9.0、xgboost 3.3.0）
+**入口**：`& ".venv_q8\Scripts\python.exe" work\smoke_p105.py`
+**数据**：500 条合成客户（标签与 previously_insured / vehicle_damage / age 相关），训练两轮共产生 4 条实验记录
+
+### 用例结果（20/20 PASS）
+| # | 用例 | 断言 | 结果 |
+| --- | --- | --- | --- |
+| 1 | 未训练查 /best | code=3002 | PASS |
+| 2 | 未训练查 /experiments | items=[]、total=0、pages=0、HTTP 200 | PASS |
+| 3 | /experiments 无 Token | code=1002 | PASS |
+| 4 | /best 无 Token | code=1002 | PASS |
+| 5 | 训练第 1 轮（三模型） | code=0 | PASS |
+| 6 | 训练第 2 轮（仅 LR） | code=0 | PASS |
+| 7 | 分页首页 | per_page=3 → 3 条、total=4、pages=2、page=1 | PASS |
+| 8 | 分页第 2 页 | 1 条且与首页 id 无交集 | PASS |
+| 9 | items 字段 | 11 字段与 docs §3.2 一致 | PASS |
+| 10 | params 可复现性 | fpr/tpr 等长且 >1 点；CM 为 2x2；importances 与 feature_names 均 10 项 | PASS |
+| 11 | model_name 过滤 | total=2 且全部为 logistic_regression | PASS |
+| 12 | 非法 model_name | code=1001 | PASS |
+| 13 | per_page=999 | 截断为 200 | PASS |
+| 14 | page=abc | code=1001 | PASS |
+| 15 | page=0 | code=1001 | PASS |
+| 16 | /best 结构与一致性 | 三字段恰好；experiment_id / model_name / roc_auc 与 DB is_best 行逐项相符 | PASS |
+| 17 | is_best 唯一性 | 4 条记录中恰 1 条 is_best | PASS |
+| 18 | /best 选优正确 | roc_auc == 全部实验最大值 | PASS |
+| 19 | 普通用户权限 | 两接口均 code=0（docs 未限 admin） | PASS |
+| 20 | 排序稳定性 | id 序列严格倒序 | PASS |
+
+### 回归
+P1-01-1 10/10、P1-01-2 10/10、P1-01 端到端 7/7、P1-02 10/10、P1-03 10/10、P1-04 13/13、上传限制 10/10 全部通过。
+
+**累计 smoke：80/80（10+10+7+10+10+13+10+20）全绿。**
+**验收脚本 `work/acceptance_p1_data.py`：34/37**（余 3 项 `uploaded_by` / `customers.py` 复数命名 / `Customer.bulk_create` 为已确认保留的 docs 冲突项）。
+
+### Bug 记录
+本轮 0 新增 Bug（编号仍至 BUG-015）。
+
+**排序缺陷的提前规避**：SQLite `func.now()` 精度到秒，同一次训练写入的 3 条记录 `created_at` 完全相同。若仅按 `created_at` 单列倒序，分页边界记录会漂移并出现跨页重复。实现时已加 `id` 倒序兜底，用例 8（跨页无重叠）与用例 20（全局有序）专门覆盖此风险。
+
+### 未覆盖
+- 单页超过 200 条实验记录的翻页压力未测（当前最多 4 条）。
+- `params` 在 38 万行数据下的 ROC 点数膨胀（数万点）对响应体积的影响未实测。
+- `is_best` 存在多条 `True` 的脏数据场景未构造（`/best` 已用 `first()` 而非 `one()` 做防御）。
+
+---
+
+## P1-06 全量预测 · 测试报告
+
+**环境**：Windows / Python 3.13.3 / `.venv_q8`
+**入口**：`& ".venv_q8\Scripts\python.exe" work\smoke_p106.py`
+**数据**：400 条合成客户，训练三模型后预测
+
+### 用例结果（18/18 PASS）
+| # | 用例 | 断言 | 结果 |
+| --- | --- | --- | --- |
+| 1 | 未训练即预测 | code=3002 | PASS |
+| 2 | 无 Token | code=1002 | PASS |
+| 3 | model_name="  " | code=1001 | PASS |
+| 4 | model_name=123 | code=1001 | PASS |
+| 5 | model_name="svm" | code=1001 | PASS |
+| 6 | 训练 | code=0 | PASS |
+| 7 | 预测前状态 | predicted_prob 全 NULL（400 行） | PASS |
+| 8 | 缺省预测 | model_name==best_model、predicted_count=400、data 恰两字段 | PASS |
+| 9 | 回写完整性 | 无 NULL 残留 | PASS |
+| 10 | 概率范围 | 全部 ∈ [0,1] | PASS |
+| 11 | 概率有效性 | 不同值 >10 个（非常量输出） | PASS |
+| 12 | **scaler 复用** | 手工 `model.predict_proba(scaler.transform(X))` 与库中值逐行比对 max_diff<1e-9 | PASS |
+| 13 | 指定模型 | model_name=logistic_regression 生效 | PASS |
+| 14 | 覆盖回写 | 回写值与指定模型的输出逐行一致 | PASS |
+| 15 | 未训练的模型名 | code=3002 | PASS |
+| 16 | 模型文件丢失 | code=3002 | PASS |
+| 17 | 无客户数据 | code=2001 | PASS |
+| 18 | 操作日志 | operation_logs 中 prediction 2 条 | PASS |
+
+用例 12 是本轮最关键的断言：它证明预测期复用了训练时持久化的 scaler 而非重新 fit，正是 docs/02 §2.6 反复强调的一致性约束。
+
+### 回归
+P1-01-1 10/10、P1-01-2 10/10、P1-01 端到端 7/7、P1-02 10/10、P1-03 10/10、P1-04 13/13、P1-05 20/20、上传限制 10/10 全部通过。
+
+**累计 smoke：98/98（10+10+7+10+10+13+20+18+10）全绿。**
+**验收脚本：34/37**（余 3 项为已确认保留的 docs 冲突项）。
+
+### Bug 记录
+**BUG-016 · 测试可重复性缺陷（已修复）**
+- 现象：`smoke_p104` 用例 13、`smoke_p106` 用例 18 的日志计数断言间歇性失败，实测值从 2 逐轮涨到 4、6、7。
+- 根因：两个脚本依赖外部 `Remove-Item instance\insurance.db` 重置状态。Windows 下该文件被 5 个残留 `.venv_q8` python 进程持有句柄，删除操作因 `-ErrorAction SilentlyContinue` 静默失败，`operation_logs` 于是跨轮累积。
+- 修复：脚本启动时自行 `delete()` 所用表（含按 action 过滤清理 `operation_logs`），不再依赖删文件。
+- 验证：连续运行两遍均 13/13 与 18/18。
+- 影响面：仅测试脚本，生产代码无涉。
+
+### 未覆盖
+- 38 万行规模的预测耗时与回写性能未实测。
+- 模型文件存在但内容损坏（非 joblib 格式）的场景未构造，`_load_bundle` 已做异常捕获与结构校验。
+- 并发预测（多请求同时回写同一批 `predicted_prob`）未测。
+
+---
+
+## P1-07 上传数据预测 · 测试报告
+
+**环境**：Windows / Python 3.13.3 / `.venv_q8`
+**入口**：`& ".venv_q8\Scripts\python.exe" work\smoke_p107.py`
+**数据**：库内 400 条训练数据 + 上传批次 30 条（id 9001~9030，与库内 id 1~400 不重叠，便于验证不入库）
+
+### 用例结果（23/23 PASS）
+| # | 用例 | 断言 | 结果 |
+| --- | --- | --- | --- |
+| 1 | 未训练即预测 | code=3002 | PASS |
+| 2 | 无 Token | code=1002 | PASS |
+| 3 | 训练 | code=0 | PASS |
+| 4 | 未上传文件 | code=1001 | PASS |
+| 5 | .txt 扩展名 | code=1001 | PASS |
+| 6 | 损坏 Excel | code=2002 | PASS |
+| 7 | 缺 Vehicle_Age 列 | code=1001 | PASS |
+| 8 | model=svm | code=1001 | PASS |
+| 9 | 响应结构 | data 恰 {model_name,total_count,statistics,predictions}；model_name==best_model；total_count=30 | PASS |
+| 10 | predictions 元素 | 长度 30，字段恰 {id, predicted_prob} | PASS |
+| 11 | 概率有效性 | 全部 ∈[0,1]，不同值 >5 | PASS |
+| 12 | 排序 | 严格按 predicted_prob 倒序 | PASS |
+| 13 | id 透传 | 返回 id 集合 == {9001..9030} | PASS |
+| 14 | statistics 自洽 | 六字段齐全；min≤mean≤max；min/max 与 predictions 吻合；1≤high_potential_count≤30 | PASS |
+| 15 | 分位数阈值 | high_potential_threshold == 全精度概率的 np.quantile(0.9)，误差 <1e-9 | PASS |
+| 16 | **不入库** | customers 行数 400、predicted_prob NULL 数 400、最大 id 400 三项均未变 | PASS |
+| 17 | scaler 复用 | 与手工 `predict_proba(scaler.transform(X))` 逐行比对 max_diff<1e-6 | PASS |
+| 18 | 无标签列 | 不含 Response 时仍 code=0、total_count=8 | PASS |
+| 19 | 无 id 列 | 返回 id 为 1-based 行号 [1..6] | PASS |
+| 20 | 指定模型 | model=logistic_regression 生效 | PASS |
+| 21 | model 空白串 | code=1001 | PASS |
+| 22 | 模型文件丢失 | code=3002 | PASS |
+| 23 | 操作日志 | prediction 日志 4 条（每次成功一条） | PASS |
+
+用例 16 是本轮核心断言：docs/03 §3.5 明确「不入库，不覆盖训练数据」，故从三个角度交叉验证库内数据完全未受影响。
+
+### 回归
+P1-01-1 10/10、P1-01-2 10/10、P1-01 端到端 7/7、P1-02 10/10、P1-03 10/10、P1-04 13/13、P1-05 20/20、P1-06 18/18、上传限制 10/10 全部通过。
+
+`_resolve_experiment` 重构后单独重跑 P1-06 确认 18/18，验证提取共用逻辑未影响 `/predict`。
+
+**累计 smoke：121/121（10+10+7+10+10+13+20+18+23+10）全绿。**
+**验收脚本：34/37**（余 3 项为已确认保留的 docs 冲突项）。
+
+### Bug 记录
+本轮 0 生产代码缺陷（编号仍至 BUG-016）。
+
+**测试脚本自身修正**：case 15 起初在已 `round(6)` 的 predictions 上重算 0.9 分位数，与服务端"先算分位数再舍入"顺序不同，产生 1e-6 偏差导致误报（api=0.968156 vs expect=0.968157）。已改为在全精度概率数组上比对并加注释说明。属断言不严谨，非实现问题。
+
+### 未覆盖
+- 上传 38 万行的响应体积与耗时未实测（`predictions` 全量返回，估算 JSON 约 30MB+）。
+- Excel 含额外无关列时的容忍度未专门断言（`prepare_features` 只取 FEATURE_NAMES，理论上多余列被忽略）。
+- 上传批次全部为同一取值导致概率完全相同时，`high_potential_count` 会等于总数的边界未构造。
+
+---
+
+## P1-08 模型评估可视化 · 测试报告
+
+**环境**：Windows / Python 3.13.3 / `.venv_q8`（matplotlib 3.11.1，Agg 后端）
+**入口**：`& ".venv_q8\Scripts\python.exe" work\smoke_p108.py`
+**数据**：400 条合成客户，训练一次产生 3 条实验；全部图表由 `experiments.params` 复原
+
+### 用例结果（23/23 PASS）
+| # | 用例 | 断言 | 结果 |
+| --- | --- | --- | --- |
+| 1 | 无实验时 roc_curve | code=3002 | PASS |
+| 2 | 无实验时 confusion_matrix | code=3002 | PASS |
+| 3 | 无 Token | code=1002 | PASS |
+| 4 | 训练 | code=0 | PASS |
+| 5 | chart_type=nope | code=1001 | PASS |
+| 6 | confusion_matrix 缺 model | code=1001 | PASS |
+| 7 | feature_importance 缺 model | code=1001 | PASS |
+| 8 | model=svm | code=1001 | PASS |
+| 9 | roc_curve | data 恰三字段、format=png、base64 解码为合法 PNG 且 >3KB | PASS |
+| 10 | metrics_comparison | 同上 | PASS |
+| 11-13 | confusion_matrix × LR/RF/XGB | 均返回真 PNG | PASS |
+| 14-16 | feature_importance × LR/RF/XGB | 均返回真 PNG | PASS |
+| 17 | **不重新训练** | 调用 8 次图表后 experiments 仍 3 条、predicted_prob 仍 400 个 NULL | PASS |
+| 18 | 图像差异性 | 5 个不同图表产出 5 张互不相同的 base64 | PASS |
+| 19 | 幂等性 | 同一请求两次返回完全相同的 base64 | PASS |
+| 20 | 删除 RF 实验后取其图 | code=3002 | PASS |
+| 21 | params 置为 `"{not-json"` | code=3002（非 500） | PASS |
+| 22 | 普通用户 | code=0（docs §3.6 未限 admin） | PASS |
+| 23 | **P1-03 回归** | 4 个 EDA 图表接口仍全部 code=0 | PASS |
+
+### 图像内容核验（超出 magic bytes 的额外验证）
+仅校验 PNG 头部无法排除「合法但空白的画布」。额外导出四张图用 `matplotlib.image` 逐像素统计：
+
+| 图表 | 尺寸 | 非白像素占比 | 不同颜色数 | 判读 |
+| --- | --- | --- | --- | --- |
+| roc_curve | 625x508 | 6.59% | 490 | 多条曲线叠加 + 基线虚线 |
+| metrics_comparison | 613x450 | 42.28% | 276 | 柱体填充完整 |
+| confusion_matrix | 511x439 | 34.24% | 1272 | 热力图渐变 + colorbar |
+| feature_importance | 759x407 | 5.35% | 260 | 10 条横向条形 |
+
+四张图均有实质内容，非空白。核验用临时目录 `work/charts_p108/` 已清理。
+
+### 回归
+P1-01-1 10/10、P1-01-2 10/10、P1-01 端到端 7/7、P1-02 10/10、P1-03 10/10、P1-04 13/13、P1-05 20/20、P1-06 18/18、P1-07 23/23、上传限制 10/10 全部通过。
+
+**累计 smoke：144/144（10+10+7+10+10+13+20+18+23+23+10）全绿。**
+**验收脚本：34/37**（余 3 项为已确认保留的 docs 冲突项）。
+
+### Bug 记录
+本轮 0 新增 Bug（编号仍至 BUG-016）。
+
+### 未覆盖
+- 中文标题渲染未测（当前全英文标签，matplotlib 默认字体无中文字形，属 P2-07 范围）。
+- 38 万行训练产生的数万点 ROC 曲线绘图耗时与内存未实测。
+- `feature_importances` 与 `feature_names` 长度不一致的脏数据场景未构造（Service 已做长度校验并抛 3002）。
+- 图表视觉美观度未做人工评审，仅做了像素级非空与色彩多样性的自动核验。
+
+---
+
+## P1-09 模型导入 / 导出 · 测试报告
+
+**环境**：Windows / Python 3.13.3 / `.venv_q8`（joblib 1.5.2，scikit-learn / xgboost 同 P1-04）
+**入口**：`& ".venv_q8\Scripts\python.exe" work\smoke_p109.py`
+**数据**：400 条合成客户，训练一次产生 3 个 joblib 文件
+**状态重置**：脚本启动时自行 `delete()` customers / experiments / operation_logs 并清空 `MODEL_DIR`，不依赖删 db 文件（BUG-016 教训）
+
+### 用例结果（25/25 PASS）
+| # | 用例 | 断言 | 结果 |
+| --- | --- | --- | --- |
+| 1 | 训练前导出 | code=3002 | PASS |
+| 2 | 导出无 Token | code=1002 | PASS |
+| 3 | 导入无 Token | code=1002 | PASS |
+| 4 | 普通用户导出 | HTTP 403 / code=1003 | PASS |
+| 5 | 普通用户导入 | HTTP 403 / code=1003 | PASS |
+| 6 | 训练 | code=0（全程只训练这一次） | PASS |
+| 7 | 导出 logistic_regression | HTTP 200、`Content-Disposition: attachment`、body 非空 | PASS |
+| 8 | 导出字节流可用性 | 落盘后 `joblib.load` 成功且含 model+scaler 双键 | PASS |
+| 9 | 三算法导出 | LR / RF / XGB 均 HTTP 200 且字节流合法 | PASS |
+| 10 | 穿越 `..%2f..%2f.env` | 非 200，且 `.env` 未被读出 | PASS |
+| 11 | 穿越 `....//....//.env` | 同上 | PASS |
+| 12 | 穿越 `%2e%2e%2f.env` | 同上 | PASS |
+| 13 | 导出 `unknown_model` | code=1001 | PASS |
+| 14 | 导入不带 file | code=1001 | PASS |
+| 15 | 导入 `a.txt` | code=1001 | PASS |
+| 16 | 导入伪造 `.joblib`（内容为随机字节） | code=1001（非 500） | PASS |
+| 17 | 导入只含 model 无 scaler 的 bundle | code=1001 | PASS |
+| 18 | 导入 `DecisionTreeClassifier` bundle | code=1001（不在白名单） | PASS |
+| 19 | **失败导入的副作用** | 用例 15-18 之后 `MODEL_DIR` 无 `.import_tmp_*` 文件，且原 LR 模型仍可加载预测 | PASS |
+| 20 | 导出→导入往返 | code=0，data 恰 `{model_name, path}` 两字段 | PASS |
+| 21 | **落盘名推断** | 上传文件名改为 `evil_name.joblib`，落盘仍为 `logistic_regression.joblib` | PASS |
+| 22 | 落盘位置 | `os.path.commonpath` 确认目标在 `MODEL_DIR` 内 | PASS |
+| 23 | 导入后可用性 | 紧接 `POST /model/predict` 返回 code=0 且回写 400 行 | PASS |
+| 24 | 操作日志 | `operation_logs` 中 `model_import` 恰 1 条（只记成功那次） | PASS |
+| 25 | 临时文件终态 | 全部用例结束后 `MODEL_DIR` 无 `.import_tmp_*` 残留 | PASS |
+
+### 安全用例说明
+目录穿越三组用例覆盖了不同的编码层次：`..%2f` 测 URL 解码后拼接、`....//` 测朴素的「去掉 `../`」式过滤能否被绕过、`%2e%2e%2f` 测点号本身被编码的情形。三者均在 `SUPPORTED_MODELS` 白名单处即被拦下，`commonpath` 复核是第二道防线。断言不只看状态码，还确认响应体里不含 `.env` 的内容特征，避免「返回了 200 但其实是另一个文件」的漏检。
+
+### 幂等性
+P1-09 smoke 连续运行两遍，两次均 25/25，`operation_logs` 计数断言稳定为 1，无跨轮累积。
+
+### 回归
+P0-06 6/6、P1-01-1 10/10、P1-01-2 10/10、P1-01 端到端 7/7、P1-02 10/10、P1-03 10/10、P1-04 13/13、P1-05 20/20、P1-06 18/18、P1-07 23/23、P1-08 23/23、上传限制 10/10 全部通过。
+
+**累计 smoke：169/169（10+10+7+10+10+13+20+18+23+23+25+10）全绿。**
+**验收脚本：34/37**（余 3 项为已确认保留的 docs 冲突项：`uploaded_by` 字段、`customers.py` 复数命名、`Customer.bulk_create`）。
+
+### Bug 记录
+本轮 0 新增 Bug（编号仍至 BUG-016）。
+
+### 未覆盖
+- 未测导入特征数与当前 `FEATURE_NAMES` 不匹配的模型（错误会推迟到 `/predict` 才暴露，见开发日志遗留项）。
+- 未测超大 joblib 文件（>50MB）导入是否触发 `MAX_CONTENT_LENGTH` 的 413 → code=1001；理论上会走 DECISION-004 的处理器，但未构造该规模的模型文件。
+- 未测并发导入同一模型名的竞态。`os.replace` 本身原子，但两个请求交错时最终落盘的是哪一个不确定。教学场景无并发要求。
+- 未测磁盘写满时 `file_storage.save` 失败的路径。
+
+---
+
+## P1-10 高潜客户筛选 · 测试报告
+
+**环境**：Windows / Python 3.13.3 / `.venv_q8`（numpy 2.x）
+**入口**：`& ".venv_q8\Scripts\python.exe" work\smoke_p110.py`
+**数据**：400 条合成客户，`predicted_prob = i/400`（i=1..400）—— 概率在 (0,1] 上均匀分布，使分位数可手工精确复算
+**状态重置**：脚本启动时自行 `delete()` customers / experiments / operation_logs，不依赖删 db 文件（BUG-016 教训）
+
+### 用例结果（23/23 PASS）
+| # | 用例 | 断言 | 结果 |
+| --- | --- | --- | --- |
+| 1 | 无 Token | code=1002 | PASS |
+| 2 | 空表 | code=3002 | PASS |
+| 3 | 有客户、概率全 NULL | code=3002 | PASS |
+| 4 | 默认调用 | code=0 | PASS |
+| 5 | 响应结构 | data 键恰为 `{threshold,total,customers}`（docs §4.1，非项目通用分页结构） | PASS |
+| 6 | **阈值正确性** | 返回 threshold 与 `np.quantile(probs,0.9)` 差值 <1e-9 | PASS |
+| 7 | 命中数 | total 等于手工统计 `sum(p >= threshold)`，含边界 | PASS |
+| 8 | 默认分页 | per_page 默认 20，返回 20 条 | PASS |
+| 9 | 字段裁剪 | customers 键恰为 id/gender/age/annual_premium/predicted_prob | PASS |
+| 10 | 排序 | predicted_prob 降序 | PASS |
+| 11 | 排序正确性 | 首条等于全表最大概率 | PASS |
+| 12 | 过滤正确性 | 每条均 >= threshold | PASS |
+| 13 | 翻页 | page=2 与 page=1 的 id 集合无交集，且首条概率 <= page=1 末条 | PASS |
+| 14 | total 稳定 | 跨页 total 恒定 | PASS |
+| 15 | percentile=0.5 | 阈值低于 0.9 时的阈值，命中数更多 | PASS |
+| 16 | **单调性** | percentile 取 0.99→0.9→0.5→0.1，total 单调递增 | PASS |
+| 17 | 分页上限 | per_page=999 实际返回 <=200 | PASS |
+| 18 | percentile 非法值 | `0` / `1` / `-0.5` / `1.5` / `abc` / `nan` / `inf` 全部 code=1001 | PASS |
+| 19 | 分页非法值 | `page=abc` / `page=0` / `per_page=0` / `per_page=xyz` 全部 code=1001 | PASS |
+| 20 | **NULL 隔离** | 将 id<=200 置 NULL 后，阈值等于剩余 200 行的中位数，结果中无 NULL | PASS |
+| 21 | 普通用户 | code=0（docs §4 未限 admin） | PASS |
+| 22 | 幂等 | 同一请求两次返回完全相同的 data | PASS |
+| 23 | **只读** | 调用前后 customers 与 operation_logs 行数不变 | PASS |
+
+### 阈值断言的强度说明
+只断言"返回了某个 0~1 之间的 threshold"无法证明用的是分位数 —— 固定阈值 0.5 也能通过。因此本轮用可精确复算的均匀分布概率（`i/400`），把返回值与 `np.quantile` 比对到 1e-9；再用单调性用例（16）交叉验证 percentile 参数真的在起作用。两者合起来才能排除"参数被忽略、实际用了硬编码阈值"这种假通过。
+
+### 集成校验（独立脚本）
+`work/smoke_p110_integration.py`：seed 400 行 → train → predict → targets。
+
+| 步骤 | 结果 |
+| --- | --- |
+| `POST /model/train` | code=0 |
+| `POST /model/predict` | code=0，`{model_name: xgboost, predicted_count: 400}` |
+| `GET /email/targets` | code=0，threshold=0.9625437915、total=40（正好 top 10%） |
+| top3 概率 | 0.9961 / 0.9940 / 0.9934（降序，符合预期） |
+
+确认接口在真实 XGBoost 输出的概率分布（偏两端）上同样给出正确的 top 10%。
+
+### 幂等性
+P1-10 smoke 连续运行两遍，两次均 23/23，无跨轮状态污染。
+
+### 回归
+P0-06 6/6、P1-01-1 10/10、P1-01-2 10/10、P1-01 端到端 7/7、P1-02 10/10、P1-03 10/10、P1-04 13/13、P1-05 20/20、P1-06 18/18、P1-07 23/23、P1-08 23/23、P1-09 25/25、上传限制 10/10 全部通过。
+
+**累计 smoke：192/192（10+10+7+10+10+13+20+18+23+23+25+23+10）全绿。**
+**验收脚本：34/37**（余 3 项为已确认保留的 docs 冲突项）。
+
+### Bug 记录
+本轮 0 新增 Bug（编号仍至 BUG-016）。
+
+### 未覆盖
+- 未在 38 万行规模下实测 `predicted_probs()` 的内存与耗时（见 DEBT-P110-1）。
+- 未测所有客户概率完全相同的极端情形。此时分位数等于该值，全部客户都会命中，`total` 等于总数 —— 数学上正确但业务上"top 10%"失去意义。合成数据难以自然产生，实际预测也几乎不可能。
+- 未测 `predicted_prob` 恰好等于阈值的浮点边界密集场景（当前用例 12 的 `>=` 断言留了 1e-12 容差）。
+- 未测并发调用（纯只读，无竞态风险）。

@@ -15,8 +15,8 @@ from app.api.v1.log import bp as log_bp
 
 def register_blueprints(app: Flask) -> None:
     """向 Flask 实例注册全部 API v1 蓝图。"""
-    app.register_blueprint(auth_bp)
-    app.register_blueprint(data_bp)
-    app.register_blueprint(model_bp)
-    app.register_blueprint(email_bp)
-    app.register_blueprint(log_bp)
+    app.register_blueprint(auth_bp, url_prefix="/api/v1/auth")
+    app.register_blueprint(data_bp, url_prefix="/api/v1/data")
+    app.register_blueprint(model_bp, url_prefix="/api/v1/model")
+    app.register_blueprint(email_bp, url_prefix="/api/v1/email")
+    app.register_blueprint(log_bp, url_prefix="/api/v1/logs")

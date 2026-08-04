@@ -36,3 +36,29 @@ class User(Base):
     def all_users(cls, db: Session) -> list["User"]:
         """查所有用户（admin 接口用，按 id 升序）"""
         return db.query(cls).order_by(cls.id).all()    
+
+    @classmethod
+    def update_profile(cls, db, user_id, **kwargs):
+        user = db.query(cls).filter(cls.id == user_id).first()
+
+        if not user:
+            return None
+
+        for key, value in kwargs.items():
+            setattr(user, key, value)
+
+        db.add(user)
+
+        return user
+    @classmethod
+    def update_password(cls, db, user_id, password_hash):
+        user = db.query(cls).filter(cls.id == user_id).first()
+
+        if not user:
+            return None
+
+        user.password_hash = password_hash
+
+        db.add(user)
+
+        return user
