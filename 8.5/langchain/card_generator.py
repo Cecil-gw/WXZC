@@ -39,8 +39,6 @@ slogan_template = PromptTemplate(
     input_variables=["name", "job"],
     template="请根据以下信息，生成一句 15 字以内的个人 slogan，要求朗朗上口。姓名：{name}，职位：{job}"
 )
-
-# ========== 第5步 Pydantic + JsonOutputParser 结构化名片 ==========
 class Card(BaseModel):
     name: str = Field(description="姓名")
     job: str = Field(description="职位")
