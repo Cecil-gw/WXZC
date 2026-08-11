@@ -9,13 +9,13 @@ dest_chain = dest_prompt | llm
 
 # ========== 2.预算规划师 budget ==========
 budget_prompt = ChatPromptTemplate.from_messages([
-    ("system", "你是预算规划师。只输出费用拆分，吃、住、行各项花费预估。不要输出景点、美食、交通、文化内容。用户问题：{query}")
+    ("system", "你是预算规划师。只输出每天的费用拆分，吃、住、行各项花费预估。不要输出景点、美食、交通、文化内容。用户问题：{query}")
 ])
 budget_chain = budget_prompt | llm
 
 # ========== 3.交通顾问 transportation ==========
 transport_prompt = ChatPromptTemplate.from_messages([
-    ("system", "你是交通顾问。只输出往返大交通、市内出行方案。不要输出景点、预算、美食、文化内容。用户问题：{query}")
+    ("system", "你是交通顾问。只输出往返大交通、市内出行方案，要给出相关时间安排和最方便的路线。不要输出景点、预算、美食、文化内容。用户问题：{query}")
 ])
 transport_chain = transport_prompt | llm
 

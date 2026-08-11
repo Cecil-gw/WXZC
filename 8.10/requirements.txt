@@ -1,0 +1,43 @@
+# RAG Project Dependencies
+# Generated: 2026-08-09
+# Python Version: 3.12
+
+# LangChain Core Framework
+langchain-classic==1.0.7
+langchain-core==1.4.0
+langchain-community==0.4.2
+langchain-text-splitters==1.1.2
+
+# LangChain Extensions
+langchain-huggingface==1.2.2
+langchain-chroma==1.1.0
+langchain-openai==1.2.2
+
+# Vector Database & client
+chromadb==1.5.9
+
+# OpenAI API SDK
+openai==2.38.0
+
+# Embedding Models & Deep Learning
+sentence-transformers==5.5.1
+transformers==5.4.0
+
+# PyTorch (CPU version)
+torch==2.11.0+cpu
+--extra-index-url https://download.pytorch.org/whl/cpu
+
+# Text Retrieval & Tokenization
+rank-bm25==0.2.2
+jieba==0.42.1
+numpy==2.4.3
+scikit-learn
+
+# PDF Parsing
+pdfplumber==0.11.9
+pdfminer.six==20251230
+
+# Utilities
+python-dotenv==1.2.1
+huggingface-hub==1.8.0
+tiktoken==0.12.0

@@ -36,7 +36,7 @@ def format_docs(docs):
 
 
 def main():
-    print("\n===3.加载本地BGE‑large‑zh embedding===")
+    print("\n3.加载本地BGE‑large‑zh embedding")
     bge_embedding = HuggingFaceBgeEmbeddings(
         model_name=BGE_MODEL_PATH,
         model_kwargs={"device": "cpu"},
@@ -122,8 +122,7 @@ def main():
         | StrOutputParser()
     )
 
-    # 交互循环：输入exit退出
-    print("\n=====RAG交互，输入exit退出=====")
+    print("\nRAG交互，输入exit退出")
     while True:
         user_input = input("请输入问题：")
         if user_input.strip().lower() == "exit":

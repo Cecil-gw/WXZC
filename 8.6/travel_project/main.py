@@ -45,10 +45,12 @@ async def generate_travel_plan(destination: str, days: int, budget: int):
 
 
 async def main():
-    await chat_entry("长沙有什么好吃的？")
-    await chat_entry("重庆4天3000元怎么玩？")
-    await generate_travel_plan(destination="厦门", days=3, budget=2200)
-
+    while True:
+        user_input = input("\n请输入旅游问题（输入exit退出）：")
+        if user_input.lower() == "exit":
+            break
+        await chat_entry(user_input)
+        
 
 if __name__ == "__main__":
     asyncio.run(main())

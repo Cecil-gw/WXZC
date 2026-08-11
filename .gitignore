@@ -7,3 +7,5 @@ __pycache__/
 logs/
 *.log
 pytorch/
+bge-large-zh/
+bge-reranker-v2-m3/
